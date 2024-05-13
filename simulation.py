@@ -8,7 +8,7 @@ from server import strategy
 fl.simulation.start_simulation(
     client_fn=client_fn,
     num_clients=NUM_CLIENTS,
-    config=fl.server.ServerConfig(num_rounds=5),
+    config=fl.server.ServerConfig(num_rounds=3),
     strategy=strategy,
     client_resources=client_resources,
 )

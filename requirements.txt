@@ -1,0 +1,7 @@
+flwr==1.8.0
+flwr_datasets==0.1.0
+numpy==1.26.4
+torch==2.3.0
+torch==2.0.1+cu118
+torchvision==0.18.0
+torchvision==0.15.2+cu118

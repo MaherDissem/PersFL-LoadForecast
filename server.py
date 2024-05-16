@@ -209,7 +209,7 @@ class FedCustom(fl.server.strategy.Strategy):
                 fit_configurations.append(
                     (client, FitIns(parameters, higher_lr_config))
                 )
-        return fit_configurations
+        return fit_configurations # rename to client_instructions TODO https://flower.ai/docs/framework/how-to-configure-clients.html
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager

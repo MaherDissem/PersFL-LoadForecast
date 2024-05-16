@@ -1,4 +1,5 @@
 import flwr as fl
+
 from config import NUM_CLIENTS, client_resources
 from client import client_fn
 from metrics import evaluate

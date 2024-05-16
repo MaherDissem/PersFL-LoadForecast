@@ -20,19 +20,6 @@ from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_nd
 
 trainloaders, valloaders, testloader = load_datasets()
 
-
-from flwr.common import (
-    Code,
-    EvaluateIns,
-    EvaluateRes,
-    FitIns,
-    FitRes,
-    GetParametersIns,
-    GetParametersRes,
-    Status,
-)
-
-
 class FlowerClient(fl.client.Client):
     def __init__(self, cid, net, trainloader, valloader):
         self.cid = cid

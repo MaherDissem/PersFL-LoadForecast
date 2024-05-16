@@ -75,7 +75,7 @@ class FedCustom(fl.server.strategy.Strategy):
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
     ) -> None:
-        """Custom FedAvg strategy with sparse matrices.
+        """Custom FedAvg strategy with sparse matrices based communication.
 
         Parameters
         ----------
@@ -121,13 +121,36 @@ class FedCustom(fl.server.strategy.Strategy):
         self.fit_metrics_aggregation_fn = fit_metrics_aggregation_fn
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn
 
+
     def __repr__(self) -> str:
         return "FedCustom"
+
+
+    def initialize_parameters(
+        self, client_manager: ClientManager
+    ) -> Optional[Parameters]:
+        """Initialize global model parameters (server)."""
+        net = Net()
+        ndarrays = get_parameters(net)
+        return fl.common.ndarrays_to_parameters(ndarrays)
+    
+
+    def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
+        """Return sample size and required number of clients."""
+        num_clients = int(num_available_clients * self.fraction_fit)
+        return max(num_clients, self.min_fit_clients), self.min_available_clients
+
+
+    def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
+        """Use a fraction of available clients for evaluation."""
+        num_clients = int(num_available_clients * self.fraction_evaluate)
+        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
+
 
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
-        """Evaluate model parameters using an evaluation function."""
+        """Evaluate parameters on server-side model using an evaluation function."""
         if self.evaluate_fn is None:
             # No evaluation function provided
             return None
@@ -140,48 +163,7 @@ class FedCustom(fl.server.strategy.Strategy):
             return None
         loss, metrics = eval_res
         return loss, metrics
-
-    def aggregate_fit(
-        self,
-        server_round: int,
-        results: List[Tuple[ClientProxy, FitRes]],
-        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate fit results using weighted average."""
-        if not results:
-            return None, {}
-        # Do not aggregate if there are failures and failures are not accepted
-        if not self.accept_failures and failures:
-            return None, {}
-
-        # We deserialize each of the results with our custom method
-        weights_results = [
-            (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
-
-        # We serialize the aggregated result using our custom method
-        parameters_aggregated = ndarrays_to_sparse_parameters(
-            aggregate(weights_results)
-        )
-
-        # Aggregate custom metrics if aggregation fn was provided
-        metrics_aggregated = {}
-        if self.fit_metrics_aggregation_fn:
-            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
-        elif server_round == 1:  # Only log this warning once
-            log(WARNING, "No fit_metrics_aggregation_fn provided")
-
-        return parameters_aggregated, metrics_aggregated
-
-    def initialize_parameters(
-        self, client_manager: ClientManager
-    ) -> Optional[Parameters]:
-        """Initialize global model parameters (server)."""
-        net = Net()
-        ndarrays = get_parameters(net)
-        return fl.common.ndarrays_to_parameters(ndarrays)
+    
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -209,7 +191,43 @@ class FedCustom(fl.server.strategy.Strategy):
                 fit_configurations.append(
                     (client, FitIns(parameters, higher_lr_config))
                 )
-        return fit_configurations # rename to client_instructions TODO https://flower.ai/docs/framework/how-to-configure-clients.html
+        return fit_configurations
+
+
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        """Aggregate fit results using weighted average."""
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
+
+        # We deserialize each of the results with our custom method
+        weights_results = [
+            (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+            for _, fit_res in results
+        ]
+
+        # We aggregate and serialize results using our custom method
+        parameters_aggregated = ndarrays_to_sparse_parameters(
+            aggregate(weights_results)
+        )
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        if self.fit_metrics_aggregation_fn:
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+        elif server_round == 1:  # Only log this warning once
+            log(WARNING, "No fit_metrics_aggregation_fn provided")
+
+        return parameters_aggregated, metrics_aggregated
+
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -231,6 +249,7 @@ class FedCustom(fl.server.strategy.Strategy):
         # Return client/config pairs
         return [(client, evaluate_ins) for client in clients]
 
+
     def aggregate_evaluate(
         self,
         server_round: int,
@@ -250,13 +269,4 @@ class FedCustom(fl.server.strategy.Strategy):
         )
         metrics_aggregated = {}
         return loss_aggregated, metrics_aggregated
-
-    def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Return sample size and required number of clients."""
-        num_clients = int(num_available_clients * self.fraction_fit)
-        return max(num_clients, self.min_fit_clients), self.min_available_clients
-
-    def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Use a fraction of available clients for evaluation."""
-        num_clients = int(num_available_clients * self.fraction_evaluate)
-        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
+    

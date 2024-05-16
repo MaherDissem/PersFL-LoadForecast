@@ -22,7 +22,7 @@ fed_sparse_strategy = FedCustom(
     min_fit_clients=20,
     min_evaluate_clients=40,
     min_available_clients=NUM_CLIENTS,
-    evaluate_fn=evaluate,  # cusom server-side evaluation function
+    evaluate_fn=evaluate,         # cusom server-side evaluation function
     on_fit_config_fn=fit_config,  # Pass the fit_config function
 )
 

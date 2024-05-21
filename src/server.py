@@ -170,7 +170,7 @@ class FedCustom(fl.server.strategy.Strategy):
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
 
-        # Sample clients
+        # Sample clients to use in this round
         sample_size, min_num_clients = self.num_fit_clients(
             client_manager.num_available()
         )
@@ -232,7 +232,7 @@ class FedCustom(fl.server.strategy.Strategy):
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
-        """Configure the next round of evaluation."""
+        """Configure the next round of evaluation. Provide new model parameters and send instructions via config."""
         if self.fraction_evaluate == 0.0:
             return []
         config = {}

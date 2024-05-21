@@ -1,6 +1,3 @@
-
-
-
 def fit_config(server_round: int):
     """Return training configuration dict for each round.
 

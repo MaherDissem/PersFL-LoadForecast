@@ -40,9 +40,8 @@ from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
-from config import NUM_CLIENTS
-from model import get_parameters
-from client import Net
+from config import config
+from model import ForecastingModel
 from metrics import evaluate
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
 
@@ -57,11 +56,11 @@ than or equal to the values of `min_fit_clients` and `min_evaluate_clients`.
 class FedCustom(fl.server.strategy.Strategy):
     def __init__(
         self,
-        fraction_fit: float = 0.005,
-        fraction_evaluate: float = 0.01,
-        min_fit_clients: int = 20,
-        min_evaluate_clients: int = 40,
-        min_available_clients: int = NUM_CLIENTS,
+        fraction_fit: float = config.fraction_fit,
+        fraction_evaluate: float = config.fraction_evaluate,
+        min_available_clients: int = config.min_available_clients,
+        min_fit_clients: int = config.min_fit_clients,
+        min_evaluate_clients: int = config.min_evaluate_clients,
         evaluate_fn: Optional[
             Callable[
                 [int, NDArrays, Dict[str, Scalar]],
@@ -121,31 +120,31 @@ class FedCustom(fl.server.strategy.Strategy):
         self.fit_metrics_aggregation_fn = fit_metrics_aggregation_fn
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn
 
-
     def __repr__(self) -> str:
         return "FedCustom"
-
 
     def initialize_parameters(
         self, client_manager: ClientManager
     ) -> Optional[Parameters]:
         """Initialize global model parameters (server)."""
-        net = Net()
-        ndarrays = get_parameters(net)
+        model = ForecastingModel(
+            config=config,
+            trainloader=None,
+            validloader=None,
+            testloader=None,
+        )
+        ndarrays = model.get_parameters()
         return fl.common.ndarrays_to_parameters(ndarrays)
-    
 
     def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
         """Return sample size and required number of clients."""
         num_clients = int(num_available_clients * self.fraction_fit)
         return max(num_clients, self.min_fit_clients), self.min_available_clients
 
-
     def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
         """Use a fraction of available clients for evaluation."""
         num_clients = int(num_available_clients * self.fraction_evaluate)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
-
 
     def evaluate(
         self, server_round: int, parameters: Parameters
@@ -163,7 +162,6 @@ class FedCustom(fl.server.strategy.Strategy):
             return None
         loss, metrics = eval_res
         return loss, metrics
-    
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -192,7 +190,6 @@ class FedCustom(fl.server.strategy.Strategy):
                     (client, FitIns(parameters, higher_lr_config))
                 )
         return fit_configurations
-
 
     def aggregate_fit(
         self,
@@ -228,7 +225,6 @@ class FedCustom(fl.server.strategy.Strategy):
 
         return parameters_aggregated, metrics_aggregated
 
-
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
@@ -249,7 +245,6 @@ class FedCustom(fl.server.strategy.Strategy):
         # Return client/config pairs
         return [(client, evaluate_ins) for client in clients]
 
-
     def aggregate_evaluate(
         self,
         server_round: int,
@@ -269,4 +264,3 @@ class FedCustom(fl.server.strategy.Strategy):
         )
         metrics_aggregated = {}
         return loss_aggregated, metrics_aggregated
-    

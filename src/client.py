@@ -1,4 +1,5 @@
 from typing import List
+import os
 import numpy as np
 import flwr as fl
 from flwr.common import (
@@ -12,24 +13,20 @@ from flwr.common import (
     Status,
 )
 
-from config import DEVICE
-from model import Net, get_parameters, set_parameters, train, test
-from dataset import load_datasets
+from config import config
+from dataset import get_clients_dataloaders
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
+from model import ForecastingModel
 
-
-trainloaders, valloaders, testloader = load_datasets()
 
 class FlowerClient(fl.client.Client):
-    def __init__(self, cid, net, trainloader, valloader):
+    def __init__(self, cid, model):
         self.cid = cid
-        self.net = net
-        self.trainloader = trainloader
-        self.valloader = valloader
+        self.model = model
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
         # Get parameters as a list of NumPy ndarray's
-        ndarrays: List[np.ndarray] = get_parameters(self.net)
+        ndarrays: List[np.ndarray] = self.model.get_parameters()
 
         # Serialize ndarray's into a Parameters object using our custom function
         parameters = ndarrays_to_sparse_parameters(ndarrays)
@@ -47,9 +44,9 @@ class FlowerClient(fl.client.Client):
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
 
         # Update local model, train, get updated parameters
-        set_parameters(self.net, ndarrays_original)
-        train(self.net, self.trainloader, epochs=1)
-        ndarrays_updated = get_parameters(self.net)
+        self.model.set_parameters(ndarrays_original)
+        self.model.train()
+        ndarrays_updated = self.model.get_parameters()
 
         # Serialize ndarray's into a Parameters object using our custom function
         parameters_updated = ndarrays_to_sparse_parameters(ndarrays_updated)
@@ -59,7 +56,7 @@ class FlowerClient(fl.client.Client):
         return FitRes(
             status=status,
             parameters=parameters_updated,
-            num_examples=len(self.trainloader),
+            num_examples=self.model.len_trainloader,
             metrics={},
         )
 
@@ -69,30 +66,53 @@ class FlowerClient(fl.client.Client):
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
 
         # Update local model, evaluate
-        set_parameters(self.net, ndarrays_original)
-        loss, accuracy = test(self.net, self.valloader)
+        self.model.set_parameters(ndarrays_original)
+        smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
+            self.model.test()
+        )  # TODO eval on either val or test set depending on ins.mode
+        loss = smape_loss  # TODO FIXME
+        metrics = {
+            "smape": loss,
+            "mae": mae_loss,
+            "mse": mse_loss,
+            "rmse": rmse_loss,
+            "r2": r2_loss,
+        }
 
         # Build and return response
         status = Status(code=Code.OK, message="Success")
         return EvaluateRes(
             status=status,
             loss=float(loss),
-            num_examples=len(self.valloader),
-            metrics={"accuracy": float(accuracy)},
+            num_examples=self.model.len_validloader,
+            metrics=metrics,
         )
 
 
 def client_fn(cid: str) -> FlowerClient:
     """Create a Flower client representing a single organization."""
 
+    # Load data
+    # Note: each client will train and evaluate on their own unique data
+    trainloaders, valloaders, testloaders = get_clients_dataloaders(
+        data_root=config.data_root,
+        num_clients=config.nbr_clients,
+        input_size=config.input_size,
+        forecast_horizon=config.forecast_horizon,
+        stride=config.stride,
+        batch_size=config.batch_size,
+        valid_set_size=config.valid_set_size,
+        test_set_size=config.test_set_size,
+    )
     # Load model
-    net = Net().to(DEVICE)
-
-    # Load data (CIFAR-10)
-    # Note: each client gets a different trainloader/valloader, so each client
-    # will train and evaluate on their own unique data
-    trainloader = trainloaders[int(cid)]
-    valloader = valloaders[int(cid)]
-
-    # Create a  single Flower client representing a single organization
-    return FlowerClient(cid, net, trainloader, valloader)
+    os.makedirs("weights", exist_ok=True)
+    config.checkpoint_path = f"weights/model_{cid}.pth"
+    config.seed = config.seed + int(cid)
+    model = ForecastingModel(
+        config=config,
+        trainloader=trainloaders[int(cid)],
+        validloader=valloaders[int(cid)],
+        testloader=testloaders[int(cid)],
+    )
+    # Create a single Flower client representing representing a single building (single data source)
+    return FlowerClient(cid, model)

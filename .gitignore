@@ -1,4 +1,23 @@
-__pycache__
-venv
-*.tar.gz
+# Virtual environments
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files
+data/
 cifar-*/
+*.tar.gz
+
+# Logs
+logs/
+*.log
+
+# Results and models
+results/
+*.pth
+
+# Miscellaneous
+TODO.md

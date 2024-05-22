@@ -13,7 +13,6 @@ class DatasetForecasting(torch.utils.data.Dataset):
         self, csv_file: str, input_size: int, forcast_horizon: int, stride: int
     ) -> None:
         super().__init__()
-        self.csv = csv_file
         self.df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
         self.input_size = input_size
         self.forcast_horizon = forcast_horizon
@@ -66,6 +65,7 @@ def get_data_loaders(
     valid_set_size: int,
     test_set_size: int,
 ) -> Tuple[DataLoader, DataLoader]:
+
     dataset = DatasetForecasting(csv_file, input_size, forcast_horizon, stride)
     train_size = int(len(dataset) * (1 - valid_set_size - test_set_size))
     valid_size = int(len(dataset) * valid_set_size)
@@ -109,6 +109,7 @@ def get_clients_dataloaders(
     valid_set_size: int,
     test_set_size: int,
 ) -> Tuple[List[DataLoader], List[DataLoader], List[DataLoader]]:
+
     trainloaders = []
     valloaders = []
     testloaders = []
@@ -144,7 +145,7 @@ def get_clients_dataloaders(
 
 
 if __name__ == "__main__":
-    get_clients_dataloaders(
+    get_clients_dataloaders(  # for debugging
         data_root="data/processed",
         num_clients=20,
         input_size=24 * 6,

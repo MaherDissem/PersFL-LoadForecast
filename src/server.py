@@ -262,5 +262,11 @@ class FedCustom(fl.server.strategy.Strategy):
                 for _, evaluate_res in results
             ]
         )
+
         metrics_aggregated = {}
+        for  _, evaluate_res in results:
+            metrics = evaluate_res.metrics
+            cid = evaluate_res.metrics["cid"]
+            metrics.pop("cid")
+            metrics_aggregated[cid] = metrics
         return loss_aggregated, metrics_aggregated

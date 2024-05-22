@@ -72,6 +72,7 @@ class FlowerClient(fl.client.Client):
         )  # TODO eval on either val or test set depending on ins.mode
         loss = smape_loss  # TODO FIXME
         metrics = {
+            "cid": self.cid,  # not a metric, but useful for evaluation
             "smape": loss,
             "mae": mae_loss,
             "mse": mse_loss,

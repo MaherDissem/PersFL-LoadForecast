@@ -28,12 +28,13 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     return {"accuracy": sum(accuracies) / sum(examples)}
 
 
-# The `evaluate` function will be by Flower called after every round
 def evaluate(
     server_round: int,
     parameters: fl.common.NDArrays,
     config: Dict[str, fl.common.Scalar],
 ) -> Optional[Tuple[float, Dict[str, fl.common.Scalar]]]:
+    """This function is called by the server after every round
+    to evaluate the current global model on the server-side."""
 
     sid = 0  # server dataloader index
     model = ForecastingModel(
@@ -52,7 +53,4 @@ def evaluate(
         "rmse": rmse_loss,
         "r2": r2_loss,
     }
-    print(
-        f"Server-side evaluation loss: {smape_loss:.2f}, {mae_loss:.2f}, {mse_loss:.2f}, {rmse_loss:.2f}, {r2_loss:.2f}"
-    )
     return loss, metrics

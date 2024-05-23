@@ -73,9 +73,7 @@ if __name__ == "__main__":
     input_data_path = "data/raw/CLEAN_REFIT_081116"
     output_data_path = "data/processed"
 
-    if not os.path.exists(input_data_path):
-        os.makedirs(input_data_path)
-
+    os.makedirs(output_data_path, exist_ok=True)
     for csv_file in tqdm.tqdm(glob.glob(os.path.join(input_data_path, "*.csv"))):
         df = preprocess_load(csv_file)
         df.to_csv(

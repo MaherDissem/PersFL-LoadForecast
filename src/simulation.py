@@ -7,6 +7,8 @@ from utils import fit_config
 from server import FedCustom
 
 
+fl.common.logger.configure(identifier="FlowerExperiment", filename="log.txt")
+
 # from server import fedavg_strategy
 # fl.simulation.start_simulation(
 #     client_fn=client_fn,

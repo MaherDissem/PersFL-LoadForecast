@@ -65,8 +65,13 @@ class FlowerClient(fl.client.Client):
         parameters_original = ins.parameters
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
 
-        # Update local model, evaluate
+        # Load server model into local client model
         self.model.set_parameters(ndarrays_original)
+
+        # personalization
+        # TODO: implement personalization
+
+        # Evaluate local model
         smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
             self.model.test()
         )  # TODO eval on either val or test set depending on ins.mode

@@ -40,7 +40,7 @@ class config:
     patience: int = 50
     lr: float = 1e-3
     eval_every: int = 10
-    checkpoint_path: str = "weights/model.pth"  # each client has a different path FIXME
+    checkpoint_path: str = "weights/model.pth"
     seed: int = 0
     verbose: bool = True
     # Seq2seq2 model parameters (relevant only if model_choice="seq2seq")

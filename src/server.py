@@ -1,31 +1,11 @@
-# from metrics import weighted_average
-# from metrics import evaluate
-# from utils import fit_config
-
-
-# initial_params = get_parameters(Net())
-
-# # Create FedAvg strategy
-# fedavg_strategy = fl.server.strategy.FedAvg(
-#     fraction_fit=0.005,
-#     fraction_evaluate=0.01,
-#     min_fit_clients=20,
-#     min_evaluate_clients=40,
-#     min_available_clients=NUM_CLIENTS,
-#     initial_parameters=fl.common.ndarrays_to_parameters(initial_params),
-#     evaluate_metrics_aggregation_fn=weighted_average,
-#     evaluate_fn=evaluate,  # cusom server-side evaluation function
-#     on_fit_config_fn=fit_config,  # Pass the fit_config function
-# )
-
-### custom strategy with custom serialization
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from logging import WARNING
 
 import flwr as fl
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate
+from flwr.server.client_manager import ClientManager
+from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from flwr.common import (
     EvaluateIns,
     EvaluateRes,
@@ -36,9 +16,6 @@ from flwr.common import (
     Parameters,
     Scalar,
 )
-from flwr.server.client_manager import ClientManager
-from flwr.server.client_proxy import ClientProxy
-from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
 from config import config
 from model import ForecastingModel
@@ -177,6 +154,7 @@ class FedCustom(fl.server.strategy.Strategy):
         )
 
         # Create custom configs
+        # this code is here for referece, these parameters are not used by clients for now
         n_clients = len(clients)
         half_clients = n_clients // 2
         standard_config = {"lr": 0.001}

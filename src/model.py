@@ -1,80 +1,59 @@
-from typing import List
+from typing import List, Tuple
+from collections import OrderedDict
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from collections import OrderedDict
+from torch.utils.data import DataLoader
 
-from config import DEVICE
-
-
-class Net(nn.Module):
-    def __init__(self) -> None:
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-    
-    
-def train(net, trainloader, epochs: int, verbose=False):
-    """Train the network on the training set."""
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters())
-    net.train()
-    for epoch in range(epochs):
-        correct, total, epoch_loss = 0, 0, 0.0
-        for batch in trainloader:
-            images, labels = batch["img"].to(DEVICE), batch["label"].to(DEVICE)
-            optimizer.zero_grad()
-            outputs = net(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            # Metrics
-            epoch_loss += loss
-            total += labels.size(0)
-            correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
-        epoch_loss /= len(trainloader.dataset)
-        epoch_acc = correct / total
-        if verbose:
-            print(f"Epoch {epoch+1}: train loss {epoch_loss}, accuracy {epoch_acc}")
+from models.SCINet.wrapper import ModelWrapper as SCINet
+from models.seq2seq.wrapper import ModelWrapper as Seq2Seq
 
 
-def test(net, testloader):
-    """Evaluate the network on the entire test set."""
-    criterion = torch.nn.CrossEntropyLoss()
-    correct, total, loss = 0, 0, 0.0
-    net.eval()
-    with torch.no_grad():
-        for batch in testloader:
-            images, labels = batch["img"].to(DEVICE), batch["label"].to(DEVICE)
-            outputs = net(images)
-            loss += criterion(outputs, labels).item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    loss /= len(testloader.dataset)
-    accuracy = correct / total
-    return loss, accuracy
+class ForecastingModel:
+    def __init__(
+        self,
+        config,
+        trainloader: DataLoader,
+        validloader: DataLoader,
+        testloader: DataLoader,
+    ):
+        self.config = config
+        self.trainloader = trainloader
+        self.validloader = validloader
+        self.testloader = testloader
 
+        self.len_trainloader = len(trainloader) if trainloader is not None else 0
+        self.len_validloader = len(validloader) if validloader is not None else 0
+        self.len_testloader = len(testloader) if testloader is not None else 0
 
-def set_parameters(net, parameters: List[np.ndarray]):
-    params_dict = zip(net.state_dict().keys(), parameters)
-    state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
-    net.load_state_dict(state_dict, strict=True)
+        if self.config.model == "SCINet":
+            self.model_wrapper = SCINet(
+                self.config, self.config.input_size, self.config.forecast_horizon
+            )
+        elif self.config.model == "Seq2Seq":
+            self.model_wrapper = Seq2Seq(
+                self.config, self.config.input_size, self.config.forecast_horizon
+            )
+        else:
+            raise NotImplementedError("Model not implemented")
 
+    def train(self) -> Tuple[List[float], float, float, float, float, float]:
+        return self.model_wrapper.train(
+            self.trainloader, self.validloader, self.testloader
+        )
 
-def get_parameters(net) -> List[np.ndarray]:
-    return [val.cpu().numpy() for _, val in net.state_dict().items()]
+    def evaluate(self) -> Tuple[float, float, float, float, float, float]:
+        return self.model_wrapper.validate(self.validloader)
+
+    def test(self) -> Tuple[float, float, float, float, float, float]:
+        return self.model_wrapper.validate(self.testloader)
+
+    def set_parameters(self, parameters: List[np.ndarray]):
+        params_dict = zip(self.model_wrapper.model.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+        self.model_wrapper.model.load_state_dict(state_dict, strict=True)
+
+    def get_parameters(self) -> List[np.ndarray]:
+        return [
+            val.cpu().numpy()
+            for _, val in self.model_wrapper.model.state_dict().items()
+        ]

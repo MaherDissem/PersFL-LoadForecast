@@ -21,6 +21,9 @@ class config:
     min_fit_clients: int = 2
     min_evaluate_clients: int = 2
 
+    # experiment parameters
+    log_file: str = "log.txt"
+
     # resources
     device: torch.device = (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -36,7 +39,7 @@ class config:
     nbr_var: int = 1
     stride: int = 24
     # forecasting training parameters
-    epochs: int = 2
+    epochs: int = 200
     patience: int = 50
     lr: float = 1e-3
     eval_every: int = 10

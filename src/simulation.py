@@ -7,7 +7,7 @@ from metrics import evaluate
 from utils import fit_config
 
 
-fl.common.logger.configure(identifier="FlowerExperiment", filename="log.txt")
+fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
 
 fed_sparse_strategy = FedCustom(
     fraction_fit=config.fraction_fit,

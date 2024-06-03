@@ -1,16 +1,22 @@
 from typing import List, Tuple
 from collections import OrderedDict
+import copy
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from models.SCINet.wrapper import ModelWrapper as SCINet
 from models.seq2seq.wrapper import ModelWrapper as Seq2Seq
-from config import config
+from models.SCINet.wrapper import ModelWrapper as SCINet
+from models.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
+from models.early_stop import EarlyStopping
 from dataset import get_clients_dataloaders
+from config import config
 
 
-class ForecastingModel:
+class ForecastingModel(nn.Module):
+    """This module represents a forecasting model that mixes a local model with a federated one to achieve personalization."""
+
     def __init__(
         self,
         config,
@@ -18,7 +24,11 @@ class ForecastingModel:
         validloader: DataLoader,
         testloader: DataLoader,
     ):
-        self.config = config
+        super(ForecastingModel, self).__init__()
+        self.args = config
+        self.device = (
+            torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        )
         self.trainloader = trainloader
         self.validloader = validloader
         self.testloader = testloader
@@ -27,38 +37,363 @@ class ForecastingModel:
         self.len_validloader = len(validloader) if validloader is not None else 0
         self.len_testloader = len(testloader) if testloader is not None else 0
 
-        if self.config.model == "SCINet":
-            self.model_wrapper = SCINet(
-                self.config, self.config.input_size, self.config.forecast_horizon
-            )
-        elif self.config.model == "Seq2Seq":
-            self.model_wrapper = Seq2Seq(
-                self.config, self.config.input_size, self.config.forecast_horizon
-            )
+        self.model_m = self.build_model()  # mixed model
+        self.model_l = self.build_model()  # local model (private)
+        self.model_f = self.build_model()  # federated model
+
+        self.optimizer_m = self.get_optimizer(self.model_m.parameters())
+        self.optimizer_l = self.get_optimizer(self.model_l.parameters())
+        self.optimizer_f = self.get_optimizer(self.model_f.parameters())
+
+        self.criterion = self.get_criterion()
+
+    def build_model(self) -> torch.nn.Module:
+        # These are wrappers over the model with their own train and validate methods, but we'll make new ones to implement the model-mixing logic
+        if self.args.model == "SCINet":
+            return SCINet(
+                self.args, self.args.input_size, self.args.forecast_horizon
+            ).model
+        elif self.args.model == "Seq2Seq":
+            return Seq2Seq(
+                self.args, self.args.input_size, self.args.forecast_horizon
+            ).model
         else:
             raise NotImplementedError("Model not implemented")
 
-    def train(self) -> Tuple[List[float], float, float, float, float, float]:
-        return self.model_wrapper.train(
-            self.trainloader, self.validloader, self.testloader
+    def get_optimizer(self, parameters: List[torch.nn.Parameter]):
+        return torch.optim.Adam(
+            params=parameters,
+            lr=self.args.lr,
+            betas=(0.9, 0.999),
+            weight_decay=1e-5,
         )
 
-    def evaluate(self) -> Tuple[float, float, float, float, float, float]:
-        return self.model_wrapper.validate(self.validloader)
+    def get_criterion(self):
+        return (
+            smooth_l1_loss
+            if self.args.L1Loss
+            else nn.MSELoss(size_average=False).cuda()
+        )
 
-    def test(self) -> Tuple[float, float, float, float, float, float]:
-        return self.model_wrapper.validate(self.testloader)
+    def _sample_alpha(self) -> float:
+        """Returns alpha sampled from Uniform(0,1)"""
+        alpha = np.random.uniform()
+        self.alpha = alpha
+        return alpha
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Randomly mixes the local and federated models and perform inference."""
+        alpha = self._sample_alpha()
+        # Interpolate the parameters of model1 and model2
+        for param_l, param_f, param_m in zip(
+            self.model_l.parameters(),
+            self.model_f.parameters(),
+            self.model_m.parameters(),
+        ):
+            param_m.data = (1 - alpha) * param_f.data + alpha * param_l.data
+
+        return self.model_m(x)
+
+    def backward(self, loss: torch.Tensor):
+        """Backpropagate the loss and update the models' weights."""
+        # Clear the gradients
+        self.optimizer_m.zero_grad()
+        self.optimizer_l.zero_grad()
+        self.optimizer_f.zero_grad()
+
+        # Backpropagate the loss
+        loss.backward()
+        self.optimizer_m.step()
+
+        # Update the original models weights (frozen) with the mixed model's learned weights
+        # model_l: grad_l = alpha * grad_m.
+        # model_f: grad_f = (1-alpha) * grad_m.
+        # This is easy to prove.
+        with torch.no_grad():
+            for param_l, param_f, param_m in zip(
+                self.model_l.parameters(),
+                self.model_f.parameters(),
+                self.model_m.parameters(),
+            ):
+                param_l.grad = self.alpha * param_m.grad
+                param_f.grad = (1 - self.alpha) * param_m.grad
+
+        self.optimizer_l.step()
+        self.optimizer_f.step()
 
     def set_parameters(self, parameters: List[np.ndarray]):
-        params_dict = zip(self.model_wrapper.model.state_dict().keys(), parameters)
+        """Set client model parameters from server model parameters."""
+        params_dict = zip(self.model_f.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
-        self.model_wrapper.model.load_state_dict(state_dict, strict=True)
+        self.model_f.load_state_dict(state_dict, strict=True)
 
     def get_parameters(self) -> List[np.ndarray]:
-        return [
-            val.cpu().numpy()
-            for _, val in self.model_wrapper.model.state_dict().items()
-        ]
+        """Send federated client model parameters to server."""
+        return [val.cpu().numpy() for _, val in self.model_f.state_dict().items()]
+
+    def load_parameters(self, state_dict: OrderedDict):
+        """Loads mixed, local and federated model weights from a state dict."""
+        for name, param in state_dict.items():
+            if "model_m." in name:
+                name = name.replace("model_m.", "")
+                self.model_m.state_dict()[name] = param
+            elif "model_l." in name:
+                name = name.replace("model_l.", "")
+                self.model_l.state_dict()[name] = param
+            elif "model_f." in name:
+                name = name.replace("model_f.", "")
+                self.model_f.state_dict()[name] = param
+
+    def train(self) -> Tuple[List[float], float, float, float, float, float]:
+        return self._train(self.trainloader, self.validloader, self.testloader)
+
+    def evaluate(self) -> Tuple[float, float, float, float, float, float]:
+        return self._validate(self.validloader)
+
+    def test(self) -> Tuple[float, float, float, float, float, float]:
+        return self._validate(self.testloader)
+
+    def _train(
+        self, trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
+    ) -> Tuple[List[float], float, float, float, float, float]:
+
+        early_stopping = EarlyStopping(
+            patience=self.args.patience,
+            checkpoint_path=self.args.checkpoint_path,
+            verbose=False,
+        )
+
+        epoch_start = 0
+        loss_evol = []
+
+        if self.args.mu > 0:
+            model_g = copy.deepcopy(
+                self.model_f
+            )  # global model (frozen federated model)
+            for param in model_g.parameters():
+                param.requires_grad = False
+
+        for epoch in range(epoch_start, self.args.epochs):
+            self.model_m.train()  # controls behavior of dropout and batchnorm
+            epoch_loss = 0.0
+            adjust_learning_rate(self.optimizer_m, epoch, self.args)
+
+            for data in trainloader:
+                inputs, targets = data
+                inputs = inputs.to(self.device)  # [batch_size, seq_len, n_var]
+                targets = targets.to(self.device)  # [batch_size, horizon, n_var]
+
+                # Inference and criterion loss
+                self.zero_grad()
+                if self.args.stacks == 1:
+                    forecast = self(inputs)
+                    loss = self.criterion(forecast, targets)
+                if self.args.stacks == 2:
+                    forecast, mid = self(inputs)
+                    loss = self.criterion(forecast, targets) + self.criterion(
+                        mid, targets
+                    )
+
+                # Proximity regularization loss
+                if self.args.mu > 0:
+                    prox = 0.0
+                    for param_f, param_g in zip(
+                        self.model_f.parameters(), model_g.parameters()
+                    ):
+                        prox += (param_f - param_g).norm(2)
+                    loss += self.args.mu * prox
+
+                # Subspace construciton loss
+                numerator, norm_1, norm_2 = 0, 0, 0
+                for param_f, param_l in zip(
+                    self.model_f.parameters(), self.model_l.parameters()
+                ):
+                    numerator += (param_f * param_l).add(1e-6).sum()
+                    norm_1 += param_f.pow(2).sum()
+                    norm_2 += param_l.pow(2).sum()
+                cos_sim = numerator.pow(2).div(norm_1 * norm_2)
+                loss += self.args.nu * cos_sim
+
+                epoch_loss += loss.item()
+
+                # Backward pass
+                self.backward(loss)
+
+            epoch_loss /= len(trainloader)  # average loss per batch
+            loss_evol.append(epoch_loss)  # keeps track of loss evolution
+
+            # valid
+            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
+                validloader
+            )
+
+            if config.verbose:
+                print(
+                    f"Epoch {epoch}: train loss={epoch_loss:.2f}, valid loss={smape_loss:.2f}"
+                )
+
+            # early_stopping needs the validation loss to check if it has decresed,
+            # and if it has, it will make a checkpoint of the current model
+            early_stopping(mse_loss, self)
+
+            if early_stopping.early_stop:
+                break
+
+        # load the last checkpoint with the best model (saved by EarlyStopping)
+        saved_state_dict = torch.load(config.checkpoint_path)
+        self.load_parameters(saved_state_dict)
+
+        smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader)
+        return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
+
+    def _validate(
+        self, dataloader: DataLoader
+    ) -> Tuple[float, float, float, float, float]:
+        self.model_m.eval()
+
+        losses_smape = []
+        losses_mae = []
+        losses_mse = []
+        losses_rmse = []
+        losses_r2 = []
+
+        for _data in dataloader:
+            inputs, targets = _data
+            inputs = inputs.to(self.device)  # [batch_size, window_size, n_var]
+            targets = targets.to(self.device)  # [batch_size, horizon, n_var]
+            with torch.no_grad():
+                if self.args.stacks == 1:
+                    outputs = self.model_m(inputs)
+                elif self.args.stacks == 2:
+                    outputs, _ = self.model_m(inputs)
+
+            # sMAPE
+            absolute_percentage_errors = (
+                2
+                * torch.abs(outputs - targets)
+                / (torch.abs(outputs) + torch.abs(targets))
+            )
+            loss_smape = torch.mean(absolute_percentage_errors) * 100
+            # MAE
+            loss_mae = torch.mean(torch.abs(outputs - targets))
+            # MSE
+            loss_mse = torch.mean((outputs - targets) ** 2)
+            # RMSE
+            loss_rmse = torch.sqrt(loss_mse)
+            # R squared
+            loss_r2 = 1 - torch.sum((targets - outputs) ** 2) / torch.sum(
+                (targets - torch.mean(targets)) ** 2
+            )
+
+            losses_smape.append(loss_smape.item())
+            losses_mae.append(loss_mae.item())
+            losses_mse.append(loss_mse.item())
+            losses_rmse.append(loss_rmse.item())
+            losses_r2.append(loss_r2.item())
+
+        smape_loss = np.array(losses_smape).mean()
+        mae_loss = np.array(losses_mae).mean()
+        mse_loss = np.array(losses_mse).mean()
+        rmse_loss = np.array(losses_rmse).mean()
+        r2_loss = np.array(losses_r2).mean()
+
+        return smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
+
+
+# ====================================================================================================
+# ====================================================================================================
+# ====================================================================================================
+# debug
+
+
+# def validate(model, dataloader):
+#     model.eval()
+#     device = (
+#         torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+#     )
+
+#     losses_smape = []
+#     losses_mae = []
+#     losses_mse = []
+#     losses_rmse = []
+#     losses_r2 = []
+
+#     for _data in dataloader:
+#         inputs, targets = _data
+#         inputs = inputs.to(device)  # [batch_size, window_size, n_var]
+#         targets = targets.to(device)  # [batch_size, horizon, n_var]
+#         with torch.no_grad():
+#             if config.stacks == 1:
+#                 outputs = model(inputs)
+#             elif config.stacks == 2:
+#                 outputs, _ = model(inputs)
+
+#         # sMAPE
+#         absolute_percentage_errors = (
+#             2 * torch.abs(outputs - targets) / (torch.abs(outputs) + torch.abs(targets))
+#         )
+#         loss_smape = torch.mean(absolute_percentage_errors) * 100
+#         # MAE
+#         loss_mae = torch.mean(torch.abs(outputs - targets))
+#         # MSE
+#         loss_mse = torch.mean((outputs - targets) ** 2)
+#         # RMSE
+#         loss_rmse = torch.sqrt(loss_mse)
+#         # R squared
+#         loss_r2 = 1 - torch.sum((targets - outputs) ** 2) / torch.sum(
+#             (targets - torch.mean(targets)) ** 2
+#         )
+
+#         losses_smape.append(loss_smape.item())
+#         losses_mae.append(loss_mae.item())
+#         losses_mse.append(loss_mse.item())
+#         losses_rmse.append(loss_rmse.item())
+#         losses_r2.append(loss_r2.item())
+
+#     smape_loss = np.array(losses_smape).mean()
+#     mae_loss = np.array(losses_mae).mean()
+#     mse_loss = np.array(losses_mse).mean()
+#     rmse_loss = np.array(losses_rmse).mean()
+#     r2_loss = np.array(losses_r2).mean()
+
+#     return smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
+
+
+# trainloaders, valloaders, testloaders = get_clients_dataloaders(
+#     data_root=config.data_root,
+#     num_clients=config.nbr_clients,
+#     input_size=config.input_size,
+#     forecast_horizon=config.forecast_horizon,
+#     stride=config.stride,
+#     batch_size=config.batch_size,
+#     valid_set_size=config.valid_set_size,
+#     test_set_size=config.test_set_size,
+# )
+
+# main_model = ForecastingModel(config, trainloaders[0], valloaders[0], testloaders[0])
+
+# init_fed_model = main_model.model_f
+# init_smape, init_mae, init_mse, init_rmse, init_r2 = validate(
+#     init_fed_model, valloaders[0]
+# )
+
+# loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = main_model.train()
+
+# new_fed_model = main_model.model_f
+# new_smape, new_mae, new_mse, new_rmse, new_r2 = validate(new_fed_model, valloaders[0])
+
+# print("main model:")
+# print(smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss)
+
+# print("init model:")
+# print(init_smape, init_mae, init_mse, init_rmse, init_r2)
+
+# print("new model:")
+# print(new_smape, new_mae, new_mse, new_rmse, new_r2)
+
+# ====================================================================================================
+# ====================================================================================================
+# ====================================================================================================
 
 
 def run_on_local_data(
@@ -67,17 +402,19 @@ def run_on_local_data(
     """Train and test a forecasting model on local data only.
     This is used for comparing performance of local training vs federated learning"""
 
-    model = ForecastingModel(
-        config=config,
-        trainloader=trainloader,
-        validloader=validloader,
-        testloader=testloader,
+    if config.model == "SCINet":
+        local_model_wrapper = SCINet(config, config.input_size, config.forecast_horizon)
+    elif config.model == "Seq2Seq":
+        local_model_wrapper = Seq2Seq(
+            config, config.input_size, config.forecast_horizon
+        )
+    else:
+        raise NotImplementedError("Model not implemented")
+
+    loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
+        local_model_wrapper.train(trainloader, validloader, testloader)
     )
-    model.train()
-    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test()
-    print(
-        f"Test Losses: smape={smape_loss:.2f}, mae={mae_loss:.2f}, mse={mse_loss:.2f}, rmse={rmse_loss:.2f}, r2={r2_loss:.2f}"
-    )
+    return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
 
 if __name__ == "__main__":
@@ -92,4 +429,10 @@ if __name__ == "__main__":
         valid_set_size=config.valid_set_size,
         test_set_size=config.test_set_size,
     )
-    run_on_local_data(trainloaders[cid], valloaders[cid], testloaders[cid])
+    loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = run_on_local_data(
+        trainloaders[cid], valloaders[cid], testloaders[cid]
+    )
+    print(
+        f"Test Losses: smape={smape_loss:.2f}, mae={mae_loss:.2f}, mse={mse_loss:.2f}, rmse={rmse_loss:.2f}, r2={r2_loss:.2f}"
+    )
+    # TODO loop over config.nbr_clients and log results

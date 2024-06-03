@@ -45,7 +45,7 @@ class FlowerClient(fl.client.Client):
 
         # Update local model, train, get updated parameters
         self.model.set_parameters(ndarrays_original)
-        self.model.train()
+        self.model.train() # TODO log metrics
         ndarrays_updated = self.model.get_parameters()
 
         # Serialize ndarray's into a Parameters object using our custom function
@@ -68,12 +68,10 @@ class FlowerClient(fl.client.Client):
         # Load server model into local client model
         self.model.set_parameters(ndarrays_original)
 
-        # personalization
-        # TODO: implement personalization
-
-        # Evaluate local model
+        # Evaluate local model: 
+        # train the mixed-model with new federated parameters. Metrics returned are for the test data.
         smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
-            self.model.test()
+            self.model.train()
         )  # TODO eval on either val or test set depending on ins.mode
         loss = smape_loss  # TODO FIXME
         metrics = {

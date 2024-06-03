@@ -7,7 +7,7 @@ class config: # TODO upper case, use @dataclass
     # Clients parameters
     data_root: str = "data/processed"
     nbr_clients: int = 20
-    nbr_rounds: int = 3
+    nbr_rounds: int = 30
 
     # Dataloader parameters
     batch_size: int = 32
@@ -15,8 +15,8 @@ class config: # TODO upper case, use @dataclass
     test_set_size: int = 0.15
 
     # Server parameters
-    fraction_fit: float = 5 / 20
-    fraction_evaluate: float = 3 / 20
+    fraction_fit: float = 20 / 20       # TODO make lower
+    fraction_evaluate: float = 20 / 20  # TODO make lower
     min_available_clients: int = 3
     min_fit_clients: int = 2
     min_evaluate_clients: int = 2
@@ -43,8 +43,8 @@ class config: # TODO upper case, use @dataclass
     nbr_var: int = 1
     stride: int = 24
     # Forecasting training parameters
-    epochs: int = 20
-    patience: int = 5
+    epochs: int = 200
+    patience: int = 20
     lr: float = 1e-3
     eval_every: int = 10
     checkpoint_path: str = "weights/model.pth"

@@ -1,30 +1,30 @@
 import torch
 
 
-class config:
+class config: # TODO upper case, use @dataclass
     """Configuration class for the federated learning setup."""
 
-    # clients parameters
+    # Clients parameters
     data_root: str = "data/processed"
     nbr_clients: int = 20
     nbr_rounds: int = 3
 
-    # dataloader parameters
+    # Dataloader parameters
     batch_size: int = 32
     valid_set_size: int = 0.15
     test_set_size: int = 0.15
 
-    # server parameters
+    # Server parameters
     fraction_fit: float = 5 / 20
     fraction_evaluate: float = 3 / 20
     min_available_clients: int = 3
     min_fit_clients: int = 2
     min_evaluate_clients: int = 2
 
-    # experiment parameters
+    # Experiment parameters
     log_file: str = "log.txt"
 
-    # resources
+    # Resources
     device: torch.device = (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
@@ -32,15 +32,19 @@ class config:
     if device.type == "cuda":
         client_resources = {"num_cpus": 1, "num_gpus": 1.0}
 
-    # forecasting parameters
+    # Model mixing parameters
+    mu: float = 0.01
+    nu: float = 2.0
+
+    # Forecasting parameters
     model: str = "SCINet"  # "Seq2Seq" or "SCINet"
     input_size: int = 24 * 6
     forecast_horizon: int = 24
     nbr_var: int = 1
     stride: int = 24
-    # forecasting training parameters
-    epochs: int = 200
-    patience: int = 50
+    # Forecasting training parameters
+    epochs: int = 20
+    patience: int = 5
     lr: float = 1e-3
     eval_every: int = 10
     checkpoint_path: str = "weights/model.pth"

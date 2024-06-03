@@ -1,3 +1,6 @@
+# IDE settings
+.vscode/
+
 # Virtual environments
 venv/
 
@@ -22,3 +25,7 @@ results/
 
 # Miscellaneous
 TODO.md
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb

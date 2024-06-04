@@ -1,3 +1,4 @@
+from typing import Dict
 import torch
 
 
@@ -28,13 +29,14 @@ class config: # TODO upper case, use @dataclass
     device: torch.device = (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
-    client_resources: dict[str, float] = {"num_cpus": 1, "num_gpus": 0.0}
+    client_resources: Dict[str, float] = {"num_cpus": 1, "num_gpus": 0.0}
     if device.type == "cuda":
         client_resources = {"num_cpus": 1, "num_gpus": 1.0}
 
     # Model mixing parameters
     mu: float = 0.01
     nu: float = 2.0
+    eval_local: bool = True # after training the mixed model, wether to eval the mix or the local model
 
     # Forecasting parameters
     model: str = "SCINet"  # "Seq2Seq" or "SCINet"

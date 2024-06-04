@@ -150,8 +150,13 @@ class ForecastingModel(nn.Module):
     def evaluate(self) -> Tuple[float, float, float, float, float, float]:
         return self._validate(self.validloader)
 
-    def test(self) -> Tuple[float, float, float, float, float, float]:
-        return self._validate(self.testloader)
+    def test(self, server_side=False) -> Tuple[float, float, float, float, float, float]:
+        if server_side:
+            return self._validate(self.testloader, self.model_f)
+        elif self.args.eval_local:
+            return self._validate(self.testloader, self.model_l)
+        else:
+            return self._validate(self.testloader, self.model_m)
 
     def _train(
         self, trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
@@ -224,7 +229,7 @@ class ForecastingModel(nn.Module):
 
             # valid
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
-                validloader
+                validloader, self.model_m
             )
 
             if config.verbose:
@@ -243,13 +248,17 @@ class ForecastingModel(nn.Module):
         saved_state_dict = torch.load(config.checkpoint_path)
         self.load_parameters(saved_state_dict)
 
-        smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader)
+        # test
+        if self.args.eval_local:
+            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader, self.model_l)
+        else:
+            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader, self.model_m)
         return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
     def _validate(
-        self, dataloader: DataLoader
+        self, dataloader: DataLoader, model: nn.Module
     ) -> Tuple[float, float, float, float, float]:
-        self.model_m.eval()
+        model.eval()
 
         losses_smape = []
         losses_mae = []
@@ -263,9 +272,9 @@ class ForecastingModel(nn.Module):
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
                 if self.args.stacks == 1:
-                    outputs = self.model_m(inputs)
+                    outputs = model(inputs)
                 elif self.args.stacks == 2:
-                    outputs, _ = self.model_m(inputs)
+                    outputs, _ = model(inputs)
 
             # sMAPE
             absolute_percentage_errors = (

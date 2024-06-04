@@ -35,7 +35,6 @@ def evaluate(
 ) -> Optional[Tuple[float, Dict[str, fl.common.Scalar]]]:
     """This function is called by the server after every round
     to evaluate the current global model on the server-side."""
-
     sid = 0  # server dataloader index
     model = ForecastingModel(
         config=exp_config,
@@ -44,7 +43,7 @@ def evaluate(
         testloader=testloaders[int(sid)],
     )
     model.set_parameters(parameters)  # Update model with the latest parameters
-    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test()
+    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test(server_side=True) # Evaluate the federated model
     loss = smape_loss  # TODO FIXME
     metrics = {
         "smape": loss,

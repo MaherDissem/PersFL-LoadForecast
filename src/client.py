@@ -69,7 +69,7 @@ class FlowerClient(fl.client.Client):
         self.model.set_parameters(ndarrays_original)
 
         # Evaluate local model: 
-        # train the mixed-model with new federated parameters. Metrics returned are for the test data.
+        # train the local model trained with new federated parameters. Metrics returned are for the test data.
         loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
             self.model.train()
         )  # TODO eval on either val or test set depending on ins.mode

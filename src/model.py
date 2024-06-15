@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from collections import OrderedDict
+import os
 import copy
 import numpy as np
 import torch
@@ -12,6 +13,7 @@ from models.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l
 from models.early_stop import EarlyStopping
 from dataset import get_clients_dataloaders
 from config import config
+from utils import set_seed
 
 
 class ForecastingModel(nn.Module):
@@ -123,9 +125,15 @@ class ForecastingModel(nn.Module):
 
     def set_parameters(self, parameters: List[np.ndarray]):
         """Set client model parameters from server model parameters."""
+        # Load local model from saved checkpoint
+        if os.path.exists(self.args.checkpoint_path):  # doesn't exist at server side
+            self.load_parameters(torch.load(self.args.checkpoint_path))
+        # Load federated model from server
         params_dict = zip(self.model_f.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.model_f.load_state_dict(state_dict, strict=True)
+
+        # torch.save(parameters, "aggregated_parameters.pth") # TODO remove this debug line
 
     def get_parameters(self) -> List[np.ndarray]:
         """Send federated client model parameters to server."""
@@ -133,16 +141,24 @@ class ForecastingModel(nn.Module):
 
     def load_parameters(self, state_dict: OrderedDict):
         """Loads mixed, local and federated model weights from a state dict."""
+        model_m_state_dict = {}
+        model_l_state_dict = {}
+        model_f_state_dict = {}
+
         for name, param in state_dict.items():
             if "model_m." in name:
                 name = name.replace("model_m.", "")
-                self.model_m.state_dict()[name] = param
+                model_m_state_dict[name] = param
             elif "model_l." in name:
                 name = name.replace("model_l.", "")
-                self.model_l.state_dict()[name] = param
+                model_l_state_dict[name] = param
             elif "model_f." in name:
                 name = name.replace("model_f.", "")
-                self.model_f.state_dict()[name] = param
+                model_f_state_dict[name] = param
+
+        self.model_m.load_state_dict(model_m_state_dict, strict=True)
+        self.model_l.load_state_dict(model_l_state_dict, strict=True)
+        self.model_f.load_state_dict(model_f_state_dict, strict=True)
 
     def train(self) -> Tuple[List[float], float, float, float, float, float]:
         return self._train(self.trainloader, self.validloader, self.testloader)
@@ -150,7 +166,9 @@ class ForecastingModel(nn.Module):
     def evaluate(self) -> Tuple[float, float, float, float, float, float]:
         return self._validate(self.validloader)
 
-    def test(self, server_side=False) -> Tuple[float, float, float, float, float, float]:
+    def test(
+        self, server_side=False
+    ) -> Tuple[float, float, float, float, float, float]:
         if server_side:
             return self._validate(self.testloader, self.model_f)
         elif self.args.eval_local:
@@ -232,7 +250,7 @@ class ForecastingModel(nn.Module):
                 validloader, self.model_m
             )
 
-            if config.verbose:
+            if self.args.verbose:
                 print(
                     f"Epoch {epoch}: train loss={epoch_loss:.2f}, valid loss={smape_loss:.2f}"
                 )
@@ -245,14 +263,18 @@ class ForecastingModel(nn.Module):
                 break
 
         # load the last checkpoint with the best model (saved by EarlyStopping)
-        saved_state_dict = torch.load(config.checkpoint_path)
+        saved_state_dict = torch.load(self.args.checkpoint_path)
         self.load_parameters(saved_state_dict)
 
         # test
         if self.args.eval_local:
-            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader, self.model_l)
+            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
+                testloader, self.model_l
+            )
         else:
-            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(testloader, self.model_m)
+            smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
+                testloader, self.model_m
+            )
         return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
     def _validate(
@@ -368,6 +390,7 @@ class ForecastingModel(nn.Module):
 #     return smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
 
+# set_seed(config.seed)
 # trainloaders, valloaders, testloaders = get_clients_dataloaders(
 #     data_root=config.data_root,
 #     num_clients=config.nbr_clients,
@@ -381,24 +404,46 @@ class ForecastingModel(nn.Module):
 
 # main_model = ForecastingModel(config, trainloaders[0], valloaders[0], testloaders[0])
 
+# # debug
+# # main_model.load_parameters(torch.load("weights/model_0 - Copy.pth"))
+
+# # load aggregated parameters
+# main_model.set_parameters(torch.load("C:\\Users\\maher\\SimpleFL\\aggregated_parameters.pth"))
+
+# # valid init models
 # init_fed_model = main_model.model_f
-# init_smape, init_mae, init_mse, init_rmse, init_r2 = validate(
+# init_loc_model = main_model.model_l
+# init_smape_f, init_mae_f, init_mse_f, init_rmse_f, init_r2_f = validate(
 #     init_fed_model, valloaders[0]
 # )
+# init_smape_l, init_mae_l, init_mse_l, init_rmse_l, init_r2_l = validate(
+#     init_loc_model, valloaders[0]
+# )
 
+# # train
 # loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = main_model.train()
 
+# # new trained weights
 # new_fed_model = main_model.model_f
-# new_smape, new_mae, new_mse, new_rmse, new_r2 = validate(new_fed_model, valloaders[0])
+# new_loc_model = main_model.model_l
+# new_smape_f, new_mae_f, new_mse_f, new_rmse_f, new_r2_f = validate(
+#     new_fed_model, valloaders[0]
+# )
+# new_smape_l, new_mae_l, new_mse_l, new_rmse_l, new_r2_l = validate(
+#     new_loc_model, valloaders[0]
+# )
 
-# print("main model:")
+# print("\nmain model:")
 # print(smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss)
 
-# print("init model:")
-# print(init_smape, init_mae, init_mse, init_rmse, init_r2)
+# print("\ninit model:")
+# print(init_smape_f, init_mae_f, init_mse_f, init_rmse_f, init_r2_f)
+# print(init_smape_l, init_mae_l, init_mse_l, init_rmse_l, init_r2_l)
 
-# print("new model:")
-# print(new_smape, new_mae, new_mse, new_rmse, new_r2)
+# print("\nnew model:")
+# print(new_smape_f, new_mae_f, new_mse_f, new_rmse_f, new_r2_f)
+# print(new_smape_l, new_mae_l, new_mse_l, new_rmse_l, new_r2_l)
+
 
 # ====================================================================================================
 # ====================================================================================================
@@ -428,6 +473,7 @@ def run_on_local_data(
 
 if __name__ == "__main__":
     cid = 0
+    set_seed(config.seed + cid)
     trainloaders, valloaders, testloaders = get_clients_dataloaders(
         data_root=config.data_root,
         num_clients=config.nbr_clients,

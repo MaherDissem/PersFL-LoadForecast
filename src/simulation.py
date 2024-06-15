@@ -4,9 +4,10 @@ from config import config
 from server import FedCustom
 from client import client_fn
 from metrics import evaluate
-from utils import fit_config
+from utils import fit_config, set_seed
 
 
+set_seed(config.seed)
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
 
 fed_sparse_strategy = FedCustom(

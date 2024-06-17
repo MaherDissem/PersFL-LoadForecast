@@ -36,7 +36,7 @@ class config: # TODO upper case, use @dataclass
     # Model mixing parameters
     mu: float = 0.01
     nu: float = 2.0
-    eval_local: bool = True # after training the mixed model, wether to eval the mix or the local model
+    eval_local: bool = False # after training the mixed model, whether to eval the mix or the local model
 
     # Forecasting parameters
     model: str = "SCINet"  # "Seq2Seq" or "SCINet"

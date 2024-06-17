@@ -83,9 +83,10 @@ class ForecastingModel(nn.Module):
         self.alpha = alpha
         return alpha
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, alpha: float = None) -> torch.Tensor:
         """Randomly mixes the local and federated models and perform inference."""
-        alpha = self._sample_alpha()
+        if alpha is None:
+            alpha = self._sample_alpha()
         # Interpolate the parameters of model1 and model2
         for param_l, param_f, param_m in zip(
             self.model_l.parameters(),
@@ -266,19 +267,31 @@ class ForecastingModel(nn.Module):
         saved_state_dict = torch.load(self.args.checkpoint_path)
         self.load_parameters(saved_state_dict)
 
-        # test
+        # Eval local model on test set
         if self.args.eval_local:
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
                 testloader, self.model_l
             )
+        # Eval different models from the low loss subspace on valid set then test best one on test set (Superfed paper)
         else:
+            results = []
+            for alpha in np.arange(0, 1.1, 0.1):
+                smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
+                    testloader, alpha=alpha
+                )
+                results.append(
+                    (alpha, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss)
+                )
+            best_alpha, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = min(
+                results, key=lambda x: x[1]
+            )
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
-                testloader, self.model_m
+                testloader, alpha=best_alpha
             )
         return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
     def _validate(
-        self, dataloader: DataLoader, model: nn.Module
+        self, dataloader: DataLoader, model: nn.Module = None, alpha: float = None
     ) -> Tuple[float, float, float, float, float]:
         model.eval()
 
@@ -293,11 +306,16 @@ class ForecastingModel(nn.Module):
             inputs = inputs.to(self.device)  # [batch_size, window_size, n_var]
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
-                if self.args.stacks == 1:
-                    outputs = model(inputs)
-                elif self.args.stacks == 2:
-                    outputs, _ = model(inputs)
-
+                if model is not None:
+                    if self.args.stacks == 1:
+                        outputs = model(inputs)
+                    elif self.args.stacks == 2:
+                        outputs, _ = model(inputs)
+                else:
+                    if self.args.stacks == 1:
+                        outputs = self(inputs, alpha)
+                    elif self.args.stacks == 2:
+                        outputs, _ = self(inputs, alpha)
             # sMAPE
             absolute_percentage_errors = (
                 2

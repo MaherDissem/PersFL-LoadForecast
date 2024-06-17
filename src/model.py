@@ -293,8 +293,7 @@ class ForecastingModel(nn.Module):
     def _validate(
         self, dataloader: DataLoader, model: nn.Module = None, alpha: float = None
     ) -> Tuple[float, float, float, float, float]:
-        model.eval()
-
+        
         losses_smape = []
         losses_mae = []
         losses_mse = []
@@ -307,6 +306,7 @@ class ForecastingModel(nn.Module):
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
                 if model is not None:
+                    model.eval()
                     if self.args.stacks == 1:
                         outputs = model(inputs)
                     elif self.args.stacks == 2:

@@ -277,7 +277,7 @@ class ForecastingModel(nn.Module):
             results = []
             for alpha in np.arange(0, 1.1, 0.1):
                 smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
-                    testloader, alpha=alpha
+                    validloader, alpha=alpha
                 )
                 results.append(
                     (alpha, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss)

@@ -1,8 +1,8 @@
-from typing import Dict
+from dataclasses import dataclass
 import torch
 
-
-class config: # TODO upper case, use @dataclass
+@dataclass
+class config: # TODO upper case
     """Configuration class for the federated learning setup."""
 
     # Clients parameters
@@ -29,9 +29,8 @@ class config: # TODO upper case, use @dataclass
     device: torch.device = (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
-    client_resources: Dict[str, float] = {"num_cpus": 1, "num_gpus": 0.0}
-    if device.type == "cuda":
-        client_resources = {"num_cpus": 1, "num_gpus": 1.0}
+    num_cpus: int = 1
+    num_gpus: float = 1.0 if device.type == "cuda" else 0.0
 
     # Model mixing parameters
     mu: float = 0.01

@@ -16,7 +16,60 @@ from config import config
 from utils import set_seed
 
 
-class ForecastingModel(nn.Module):
+class ForecastingModel:
+    """This module represents a forecasting model designed for federated learning (no personalization)."""
+
+    def __init__(
+        self,
+        config,
+        trainloader: DataLoader,
+        validloader: DataLoader,
+        testloader: DataLoader,
+    ):
+        self.config = config
+        self.trainloader = trainloader
+        self.validloader = validloader
+        self.testloader = testloader
+
+        self.len_trainloader = len(trainloader) if trainloader is not None else 0
+        self.len_validloader = len(validloader) if validloader is not None else 0
+        self.len_testloader = len(testloader) if testloader is not None else 0
+
+        if self.config.model == "SCINet":
+            self.model_wrapper = SCINet(
+                self.config, self.config.input_size, self.config.forecast_horizon
+            )
+        elif self.config.model == "Seq2Seq":
+            self.model_wrapper = Seq2Seq(
+                self.config, self.config.input_size, self.config.forecast_horizon
+            )
+        else:
+            raise NotImplementedError("Model not implemented")
+
+    def train(self) -> Tuple[List[float], float, float, float, float, float]:
+        return self.model_wrapper.train(
+            self.trainloader, self.validloader, self.testloader
+        )
+
+    def evaluate(self) -> Tuple[float, float, float, float, float, float]:
+        return self.model_wrapper.validate(self.validloader)
+
+    def test(self) -> Tuple[float, float, float, float, float, float]:
+        return self.model_wrapper.validate(self.testloader)
+
+    def set_parameters(self, parameters: List[np.ndarray]):
+        params_dict = zip(self.model_wrapper.model.state_dict().keys(), parameters)
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
+        self.model_wrapper.model.load_state_dict(state_dict, strict=True)
+
+    def get_parameters(self) -> List[np.ndarray]:
+        return [
+            val.cpu().numpy()
+            for _, val in self.model_wrapper.model.state_dict().items()
+        ]
+
+
+class PersForecastingModel(nn.Module):
     """This module represents a forecasting model that mixes a local model with a federated one to achieve personalization."""
 
     def __init__(
@@ -26,7 +79,7 @@ class ForecastingModel(nn.Module):
         validloader: DataLoader,
         testloader: DataLoader,
     ):
-        super(ForecastingModel, self).__init__()
+        super(PersForecastingModel, self).__init__()
         self.args = config
         set_seed(self.args.seed)
         self.device = (
@@ -130,7 +183,7 @@ class ForecastingModel(nn.Module):
         # Load local model from saved checkpoint
         if os.path.exists(self.args.checkpoint_path):  # doesn't exist at server side
             self.load_parameters(torch.load(self.args.checkpoint_path))
-            #TODO save and load optimal local model weights
+            # TODO save and load optimal local model weights
         # Load federated model from server
         params_dict = zip(self.model_f.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
@@ -169,12 +222,8 @@ class ForecastingModel(nn.Module):
     def evaluate(self) -> Tuple[float, float, float, float, float, float]:
         return self._validate(self.validloader)
 
-    def test(
-        self, server_side=False
-    ) -> Tuple[float, float, float, float, float, float]:
-        if server_side:
-            return self._validate(self.testloader, self.model_f)
-        elif self.args.eval_local:
+    def test(self) -> Tuple[float, float, float, float, float, float]:
+        if self.args.eval_local:
             return self._validate(self.testloader, self.model_l)
         else:
             return self._validate(self.testloader, self.model_m)
@@ -295,7 +344,7 @@ class ForecastingModel(nn.Module):
     def _validate(
         self, dataloader: DataLoader, model: nn.Module = None, alpha: float = None
     ) -> Tuple[float, float, float, float, float]:
-        
+
         losses_smape = []
         losses_mae = []
         losses_mse = []
@@ -422,7 +471,7 @@ class ForecastingModel(nn.Module):
 #     test_set_size=config.test_set_size,
 # )
 
-# main_model = ForecastingModel(config, trainloaders[0], valloaders[0], testloaders[0])
+# main_model = PersForecastingModel(config, trainloaders[0], valloaders[0], testloaders[0])
 
 # # debug
 # # main_model.load_parameters(torch.load("weights/model_0 - Copy.pth"))

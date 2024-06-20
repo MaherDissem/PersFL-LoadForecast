@@ -9,6 +9,7 @@ class config: # TODO upper case
     data_root: str = "data/processed"
     nbr_clients: int = 20
     nbr_rounds: int = 30
+    personalization: bool = True
 
     # Dataloader parameters
     batch_size: int = 32

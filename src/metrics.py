@@ -43,7 +43,7 @@ def evaluate(
         testloader=testloaders[int(sid)],
     )
     model.set_parameters(parameters)  # Update model with the latest parameters
-    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test(server_side=True) # Evaluate the federated model
+    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test() # Evaluate the federated model
     loss = smape_loss  # TODO FIXME
     metrics = {
         "smape": loss,

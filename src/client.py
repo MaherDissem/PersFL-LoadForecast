@@ -16,7 +16,7 @@ from flwr.common import (
 from config import config
 from dataset import get_clients_dataloaders
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
-from model import ForecastingModel
+from model import ForecastingModel, PersForecastingModel
 from utils import set_seed
 
 
@@ -47,7 +47,7 @@ class FlowerClient(fl.client.Client):
 
         # Update local model, train, get updated parameters
         self.model.set_parameters(ndarrays_original)
-        self.model.train() # TODO log metrics
+        self.model.train()  # TODO log metrics
         ndarrays_updated = self.model.get_parameters()
 
         # Serialize ndarray's into a Parameters object using our custom function
@@ -70,7 +70,7 @@ class FlowerClient(fl.client.Client):
         # Load server model into local client model
         self.model.set_parameters(ndarrays_original)
 
-        # Evaluate local model: 
+        # Evaluate local model:
         # train the local model trained with new federated parameters. Metrics returned are for the test data.
         loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
             self.model.train()
@@ -114,11 +114,19 @@ def client_fn(cid: str) -> FlowerClient:
     os.makedirs("weights", exist_ok=True)
     config.checkpoint_path = f"weights/model_{cid}.pth"
     config.seed = config.seed + int(cid)
-    model = ForecastingModel(
-        config=config,
-        trainloader=trainloaders[int(cid)],
-        validloader=valloaders[int(cid)],
-        testloader=testloaders[int(cid)],
-    )
+    if config.personalization:
+        model = PersForecastingModel(
+            config=config,
+            trainloader=trainloaders[int(cid)],
+            validloader=valloaders[int(cid)],
+            testloader=testloaders[int(cid)],
+        )
+    else:
+        model = ForecastingModel(
+            config=config,
+            trainloader=trainloaders[int(cid)],
+            validloader=valloaders[int(cid)],
+            testloader=testloaders[int(cid)],
+        )
     # Create a single Flower client representing representing a single building (single data source)
     return FlowerClient(cid, model)

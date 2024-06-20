@@ -2,6 +2,7 @@ from typing import List, Tuple
 from collections import OrderedDict
 import os
 import copy
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -522,8 +523,7 @@ class PersForecastingModel(nn.Module):
 def run_on_local_data(
     trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
 ):
-    """Train and test a forecasting model on local data only.
-    This is used for comparing performance of local training vs federated learning"""
+    """Train and test a forecasting model on local data only."""
 
     if config.model == "SCINet":
         local_model_wrapper = SCINet(config, config.input_size, config.forecast_horizon)
@@ -540,9 +540,11 @@ def run_on_local_data(
     return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
 
 
-if __name__ == "__main__":
-    cid = 0
-    set_seed(config.seed + cid)
+def eval_isolated_client():
+    """Evaluate a model not participating in federated learning.
+    This is used for comparing performance of local training vs federated learning."""
+
+    set_seed(config.seed)
     trainloaders, valloaders, testloaders = get_clients_dataloaders(
         data_root=config.data_root,
         num_clients=config.nbr_clients,
@@ -553,10 +555,24 @@ if __name__ == "__main__":
         valid_set_size=config.valid_set_size,
         test_set_size=config.test_set_size,
     )
-    loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = run_on_local_data(
-        trainloaders[cid], valloaders[cid], testloaders[cid]
-    )
-    print(
-        f"Test Losses: smape={smape_loss:.2f}, mae={mae_loss:.2f}, mse={mse_loss:.2f}, rmse={rmse_loss:.2f}, r2={r2_loss:.2f}"
-    )
-    # TODO loop over config.nbr_clients and log results
+    results = pd.DataFrame(columns=["cid", "smape", "mae", "mse", "rmse", "r2"])
+    for cid in range(config.nbr_clients):
+        loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
+            run_on_local_data(trainloaders[cid], valloaders[cid], testloaders[cid])
+        )
+        new_row = pd.DataFrame(
+            {
+                "cid": [cid],
+                "smape": [smape_loss],
+                "mae": [mae_loss],
+                "mse": [mse_loss],
+                "rmse": [rmse_loss],
+                "r2": [r2_loss],
+            }
+        )
+        results = pd.concat([results, new_row], ignore_index=True)
+    results.to_csv("local_results.csv", index=False)
+
+
+if __name__ == "__main__":
+    eval_isolated_client()

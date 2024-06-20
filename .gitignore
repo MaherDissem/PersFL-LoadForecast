@@ -21,6 +21,7 @@ logs/
 
 # Results and models
 results/
+*.csv
 *.pth
 
 # Miscellaneous

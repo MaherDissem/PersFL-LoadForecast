@@ -28,6 +28,7 @@ class ForecastingModel(nn.Module):
     ):
         super(ForecastingModel, self).__init__()
         self.args = config
+        set_seed(self.args.seed)
         self.device = (
             torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
         )
@@ -129,6 +130,7 @@ class ForecastingModel(nn.Module):
         # Load local model from saved checkpoint
         if os.path.exists(self.args.checkpoint_path):  # doesn't exist at server side
             self.load_parameters(torch.load(self.args.checkpoint_path))
+            #TODO save and load optimal local model weights
         # Load federated model from server
         params_dict = zip(self.model_f.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})

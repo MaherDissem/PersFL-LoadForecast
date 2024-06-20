@@ -17,12 +17,14 @@ from config import config
 from dataset import get_clients_dataloaders
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
 from model import ForecastingModel
+from utils import set_seed
 
 
 class FlowerClient(fl.client.Client):
     def __init__(self, cid, model):
         self.cid = cid
         self.model = model
+        set_seed(config.seed)
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
         # Get parameters as a list of NumPy ndarray's

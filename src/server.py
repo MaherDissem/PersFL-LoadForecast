@@ -21,6 +21,7 @@ from config import config
 from model import ForecastingModel
 from metrics import evaluate
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
+from utils import set_seed
 
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
@@ -84,6 +85,7 @@ class FedCustom(fl.server.strategy.Strategy):
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         super().__init__()
+        set_seed(config.seed)
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.min_fit_clients = min_fit_clients

@@ -3,11 +3,11 @@ import flwr as fl
 from flwr.common import Metrics
 
 from config import config as exp_config
-from dataset import get_clients_dataloaders
+from dataset import get_experiment_data
 from model import ForecastingModel
 
 
-trainloaders, valloaders, testloaders = get_clients_dataloaders(  # TODO improve this
+trainloaders, valloaders, testloaders, _, _, _ = get_experiment_data(
     data_root=exp_config.data_root,
     num_clients=exp_config.nbr_clients,
     input_size=exp_config.input_size,
@@ -43,7 +43,9 @@ def evaluate(
         testloader=testloaders[int(sid)],
     )
     model.set_parameters(parameters)  # Update model with the latest parameters
-    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test() # Evaluate the federated model
+    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
+        model.test()
+    )  # Evaluate the federated model
     loss = smape_loss  # TODO FIXME
     metrics = {
         "smape": loss,

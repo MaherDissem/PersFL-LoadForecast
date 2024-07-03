@@ -12,7 +12,7 @@ from models.seq2seq.wrapper import ModelWrapper as Seq2Seq
 from models.SCINet.wrapper import ModelWrapper as SCINet
 from models.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
 from models.early_stop import EarlyStopping
-from dataset import get_clients_dataloaders
+from dataset import get_experiment_data
 from config import config
 from utils import set_seed
 
@@ -461,7 +461,7 @@ class PersForecastingModel(nn.Module):
 
 
 # set_seed(config.seed)
-# trainloaders, valloaders, testloaders = get_clients_dataloaders(
+# trainloaders, valloaders, testloaders, dataset_paths, min_vals, max_vals = get_experiment_data(
 #     data_root=config.data_root,
 #     num_clients=config.nbr_clients,
 #     input_size=config.input_size,
@@ -545,7 +545,7 @@ def eval_isolated_client():
     This is used for comparing performance of local training vs federated learning."""
 
     set_seed(config.seed)
-    trainloaders, valloaders, testloaders = get_clients_dataloaders(
+    trainloaders, valloaders, testloaders, dataset_paths, min_vals, max_vals = get_experiment_data(
         data_root=config.data_root,
         num_clients=config.nbr_clients,
         input_size=config.input_size,
@@ -563,6 +563,7 @@ def eval_isolated_client():
         new_row = pd.DataFrame(
             {
                 "cid": [cid],
+                "dataset_path": [dataset_paths[cid]],
                 "smape": [smape_loss],
                 "mae": [mae_loss],
                 "mse": [mse_loss],

@@ -1,4 +1,4 @@
-import os 
+import os
 import glob
 import pandas as pd
 import tqdm
@@ -17,14 +17,20 @@ def resample_load(
     return df
 
 
-def normalize(df: pd.DataFrame, method: str = "min-max") -> pd.DataFrame:
-    if method == "min-max":
-        df = (df - df.min()) / (df.max() - df.min())
-    elif method == "z-score":
-        df = (df - df.mean()) / df.std()
-    else:
-        raise NotImplementedError
+def add_missing_timestamps_as_nan(df: pd.DataFrame) -> pd.DataFrame:
+    df.index = pd.to_datetime(df.index)
+    first_day = df.index[0].floor("D")
+    last_day = df.index[-1].ceil("D")
+    df = df.reindex(pd.date_range(first_day, last_day, freq="1H"))[:-1]
     return df
+
+
+def normalize(df: pd.DataFrame) -> pd.DataFrame:
+    # This function is called at runtime so that the min and max values are stored within the client object.
+    min_val = df.min()
+    max_val = df.max()
+    df = (df - min_val) / (max_val - min_val)
+    return df, min_val, max_val
 
 
 def extract_features(df: pd.DataFrame, features: list) -> pd.DataFrame:
@@ -35,21 +41,13 @@ def fill_missing_values(df: pd.DataFrame, method: str = "ffill") -> pd.DataFrame
     pass
 
 
-def add_missing_timestamps_as_nan(df: pd.DataFrame) -> pd.DataFrame:    
-    df.index = pd.to_datetime(df.index)
-    first_day = df.index[0].floor("D")
-    last_day = df.index[-1].ceil("D")
-    df = df.reindex(pd.date_range(first_day, last_day, freq="1H"))[:-1]
-    return df
-    
-
 def preprocess_load(
     df_path: str, trg_feat: str = "Aggregate", freq: str = "1H"
 ) -> pd.DataFrame:
-    
+
     # Load the dataset
     df = pd.read_csv(df_path, index_col=0)
-    
+
     # Select the target feature
     if type(trg_feat) == str:
         trg_feat = [trg_feat]
@@ -57,10 +55,6 @@ def preprocess_load(
 
     # Resample the data (taking The mean of the values within each hourly interval)
     df = resample_load(df, freq)
-    
-    # Normalize the data
-    df = normalize(df)
-    # TODO save min and max to denormalize later
 
     # Add missing timestamps as NaN (raw data has interruptions periods)
     df = add_missing_timestamps_as_nan(df)
@@ -68,7 +62,7 @@ def preprocess_load(
     # Check for missing values
     if df.isna().any().any():
         pass
-    
+
     return df
 
 

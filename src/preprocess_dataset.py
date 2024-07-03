@@ -3,6 +3,8 @@ import glob
 import pandas as pd
 import tqdm
 
+from config import config
+
 
 def resample_load(
     df: pd.DataFrame, freq: str = "1H", method: str = "mean"
@@ -58,6 +60,7 @@ def preprocess_load(
     
     # Normalize the data
     df = normalize(df)
+    # TODO save min and max to denormalize later
 
     # Add missing timestamps as NaN (raw data has interruptions periods)
     df = add_missing_timestamps_as_nan(df)
@@ -71,7 +74,7 @@ def preprocess_load(
 
 if __name__ == "__main__":
     input_data_path = "data/raw/CLEAN_REFIT_081116"
-    output_data_path = "data/processed"
+    output_data_path = config.data_root
 
     os.makedirs(output_data_path, exist_ok=True)
     for csv_file in tqdm.tqdm(glob.glob(os.path.join(input_data_path, "*.csv"))):

@@ -47,7 +47,7 @@ class FlowerClient(fl.client.Client):
 
         # Update local model, train, get updated parameters
         self.model.set_parameters(ndarrays_original)
-        self.model.train()  # TODO log metrics
+        self.model.train()
         ndarrays_updated = self.model.get_parameters()
 
         # Serialize ndarray's into a Parameters object using our custom function

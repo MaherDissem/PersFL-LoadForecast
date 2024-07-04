@@ -132,6 +132,22 @@ class PersForecastingModel(nn.Module):
             else nn.MSELoss(size_average=False).cuda()
         )
 
+    def infer(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """Perform inference and calculate loss depending on the model type (set in config)."""
+        if self.args.model == "SCINet":
+            if self.args.stacks == 1:
+                forecast = self(inputs)
+                loss = self.criterion(forecast, targets)
+            if self.args.stacks == 2:
+                forecast, mid = self(inputs)
+                loss = self.criterion(forecast, targets) + self.criterion(mid, targets)
+        elif self.args.model == "Seq2Seq":
+            forecast = self(inputs)
+            loss = self.criterion(forecast, targets)
+        else:
+            raise NotImplementedError("Model not implemented")
+        return forecast, loss
+
     def _sample_alpha(self) -> float:
         """Returns alpha sampled from Uniform(0,1)"""
         alpha = np.random.uniform()
@@ -250,7 +266,9 @@ class PersForecastingModel(nn.Module):
                 param.requires_grad = False
 
         for epoch in range(epoch_start, self.args.epochs):
-            self.model_m.train()  # controls behavior of dropout and batchnorm
+            self.model_l.eval()  # controls behavior of dropout and batchnorm
+            self.model_f.eval()
+            self.model_m.train()
             epoch_loss = 0.0
             adjust_learning_rate(self.optimizer_m, epoch, self.args)
 
@@ -261,14 +279,7 @@ class PersForecastingModel(nn.Module):
 
                 # Inference and criterion loss
                 self.zero_grad()
-                if self.args.stacks == 1:
-                    forecast = self(inputs)
-                    loss = self.criterion(forecast, targets)
-                if self.args.stacks == 2:
-                    forecast, mid = self(inputs)
-                    loss = self.criterion(forecast, targets) + self.criterion(
-                        mid, targets
-                    )
+                _, loss = self.infer(inputs, targets)
 
                 # Proximity regularization loss
                 if self.args.mu > 0:
@@ -298,7 +309,7 @@ class PersForecastingModel(nn.Module):
             epoch_loss /= len(trainloader)  # average loss per batch
             loss_evol.append(epoch_loss)  # keeps track of loss evolution
 
-            # valid
+            # Compute valid loss for early stopping
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
                 validloader
             )
@@ -319,13 +330,14 @@ class PersForecastingModel(nn.Module):
         saved_state_dict = torch.load(self.args.checkpoint_path)
         self.load_parameters(saved_state_dict)
 
-        # Eval local model on test set
         if self.args.eval_local:
+            # Eval local model on test set
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
                 testloader, self.model_l
             )
-        # Eval different models from the low loss subspace on valid set then test best one on test set (Superfed paper)
         else:
+            # Eval different models from the low loss subspace on valid set
+            # Then, evaluate the best one on the test set (Superfed paper)
             results = []
             for alpha in np.arange(0, 1.1, 0.1):
                 smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
@@ -357,18 +369,22 @@ class PersForecastingModel(nn.Module):
             inputs = inputs.to(self.device)  # [batch_size, window_size, n_var]
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
-                # Either use the provided model or the mixed model (self) for a given alpha
                 if model is not None:
+                    # Use the provided model
                     model.eval()
-                    if self.args.stacks == 1:
+                    if self.args.model == "SCINet":
+                        if self.args.stacks == 1:
+                            outputs = model(inputs)
+                        if self.args.stacks == 2:
+                            outputs, _ = model(inputs)
+                    elif self.args.model == "Seq2Seq":
                         outputs = model(inputs)
-                    elif self.args.stacks == 2:
-                        outputs, _ = model(inputs)
                 else:
-                    if self.args.stacks == 1:
-                        outputs = self(inputs, alpha)
-                    elif self.args.stacks == 2:
-                        outputs, _ = self(inputs, alpha)
+                    # Use the mixed model (self) for a given alpha
+                    self.model_l.eval()
+                    self.model_f.eval()
+                    self.model_m.eval()
+                    outputs, _ = self.infer(inputs, targets)
             # sMAPE
             absolute_percentage_errors = (
                 2

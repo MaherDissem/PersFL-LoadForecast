@@ -30,6 +30,7 @@ class FlowerClient(fl.client.Client):
         set_seed(config.seed)
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        """Return the current parameters of the client's federated model."""
         # Get parameters as a list of NumPy ndarray's
         ndarrays: List[np.ndarray] = self.model.get_parameters()
 
@@ -44,6 +45,7 @@ class FlowerClient(fl.client.Client):
         )
 
     def fit(self, ins: FitIns) -> FitRes:
+        """Set the parameters of the client's federated model to the server parameters, train the model, and return the updated parameters of the federated component."""
         # Deserialize parameters to NumPy ndarray's using our custom function
         parameters_original = ins.parameters
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
@@ -66,6 +68,7 @@ class FlowerClient(fl.client.Client):
         )
 
     def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        """Set the parameters of the client's federated model to the server parameters, retrain and evaluate the model, and return the evaluation metrics."""
         # Deserialize parameters to NumPy ndarray's using our custom function
         parameters_original = ins.parameters
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
@@ -75,9 +78,7 @@ class FlowerClient(fl.client.Client):
 
         # Evaluate local model:
         # train the local model trained with new federated parameters. Metrics returned are for the test data.
-        loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
-            self.model.train()
-        )
+        _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
         loss = smape_loss  # TODO FIXME
         metrics = {
             "cid": self.cid,  # not a metric, but useful for evaluation
@@ -100,7 +101,6 @@ class FlowerClient(fl.client.Client):
 
 def client_fn(cid: str) -> FlowerClient:
     """Create a Flower client from a single building's data (identified by cid)."""
-
     # Load data
     trainloaders, valloaders, testloaders, csv_paths, min_vals, max_vals = (
         get_experiment_data(
@@ -114,7 +114,6 @@ def client_fn(cid: str) -> FlowerClient:
             test_set_size=config.test_set_size,
         )
     )
-
     # Load model
     os.makedirs("weights", exist_ok=True)
     config.checkpoint_path = f"weights/model_{cid}.pth"
@@ -133,6 +132,7 @@ def client_fn(cid: str) -> FlowerClient:
             validloader=valloaders[int(cid)],
             testloader=testloaders[int(cid)],
         )
-
     # Create a single Flower client representing representing a single building (single data source)
-    return FlowerClient(model, cid, csv_paths[int(cid)], min_vals[int(cid)], max_vals[int(cid)])
+    return FlowerClient(
+        model, cid, csv_paths[int(cid)], min_vals[int(cid)], max_vals[int(cid)]
+    )

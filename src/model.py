@@ -227,7 +227,7 @@ class PersForecastingModel(nn.Module):
         if self.args.eval_local:
             return self._validate(self.testloader, self.model_l)
         else:
-            return self._validate(self.testloader, self.model_m)
+            return self._validate(self.testloader)
 
     def _train(
         self, trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
@@ -300,7 +300,7 @@ class PersForecastingModel(nn.Module):
 
             # valid
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
-                validloader, self.model_m
+                validloader
             )
 
             if self.args.verbose:
@@ -357,6 +357,7 @@ class PersForecastingModel(nn.Module):
             inputs = inputs.to(self.device)  # [batch_size, window_size, n_var]
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
+                # Either use the provided model or the mixed model (self) for a given alpha
                 if model is not None:
                     model.eval()
                     if self.args.stacks == 1:
@@ -545,15 +546,17 @@ def eval_isolated_client():
     This is used for comparing performance of local training vs federated learning."""
 
     set_seed(config.seed)
-    trainloaders, valloaders, testloaders, dataset_paths, min_vals, max_vals = get_experiment_data(
-        data_root=config.data_root,
-        num_clients=config.nbr_clients,
-        input_size=config.input_size,
-        forecast_horizon=config.forecast_horizon,
-        stride=config.stride,
-        batch_size=config.batch_size,
-        valid_set_size=config.valid_set_size,
-        test_set_size=config.test_set_size,
+    trainloaders, valloaders, testloaders, dataset_paths, min_vals, max_vals = (
+        get_experiment_data(
+            data_root=config.data_root,
+            num_clients=config.nbr_clients,
+            input_size=config.input_size,
+            forecast_horizon=config.forecast_horizon,
+            stride=config.stride,
+            batch_size=config.batch_size,
+            valid_set_size=config.valid_set_size,
+            test_set_size=config.test_set_size,
+        )
     )
     results = pd.DataFrame(columns=["cid", "smape", "mae", "mse", "rmse", "r2"])
     for cid in range(config.nbr_clients):

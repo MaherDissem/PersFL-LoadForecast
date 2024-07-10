@@ -2,7 +2,6 @@ from typing import List, Tuple
 from collections import OrderedDict
 import os
 import copy
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,62 +11,7 @@ from forecasting.seq2seq.wrapper import ModelWrapper as Seq2Seq
 from forecasting.SCINet.wrapper import ModelWrapper as SCINet
 from forecasting.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
 from forecasting.early_stop import EarlyStopping
-from dataset import get_experiment_data
-from config import config
 from utils import set_seed
-
-
-class ForecastingModel:
-    """This module represents a forecasting model designed for federated learning (no personalization)."""
-
-    def __init__(
-        self,
-        config,
-        trainloader: DataLoader,
-        validloader: DataLoader,
-        testloader: DataLoader,
-    ):
-        self.config = config
-        self.trainloader = trainloader
-        self.validloader = validloader
-        self.testloader = testloader
-
-        self.len_trainloader = len(trainloader) if trainloader is not None else 0
-        self.len_validloader = len(validloader) if validloader is not None else 0
-        self.len_testloader = len(testloader) if testloader is not None else 0
-
-        if self.config.model == "SCINet":
-            self.model_wrapper = SCINet(
-                self.config, self.config.input_size, self.config.forecast_horizon
-            )
-        elif self.config.model == "Seq2Seq":
-            self.model_wrapper = Seq2Seq(
-                self.config, self.config.input_size, self.config.forecast_horizon
-            )
-        else:
-            raise NotImplementedError("Model not implemented")
-
-    def train(self) -> Tuple[List[float], float, float, float, float, float]:
-        return self.model_wrapper.train(
-            self.trainloader, self.validloader, self.testloader
-        )
-
-    def evaluate(self) -> Tuple[float, float, float, float, float, float]:
-        return self.model_wrapper.validate(self.validloader)
-
-    def test(self) -> Tuple[float, float, float, float, float, float]:
-        return self.model_wrapper.validate(self.testloader)
-
-    def set_parameters(self, parameters: List[np.ndarray]):
-        params_dict = zip(self.model_wrapper.model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
-        self.model_wrapper.model.load_state_dict(state_dict, strict=True)
-
-    def get_parameters(self) -> List[np.ndarray]:
-        return [
-            val.cpu().numpy()
-            for _, val in self.model_wrapper.model.state_dict().items()
-        ]
 
 
 class PersForecastingModel(nn.Module):
@@ -419,10 +363,8 @@ class PersForecastingModel(nn.Module):
 
 
 # ====================================================================================================
-# ====================================================================================================
-# ====================================================================================================
 # debug
-
+# ====================================================================================================
 
 # def validate(model, dataloader):
 #     model.eval()
@@ -530,69 +472,3 @@ class PersForecastingModel(nn.Module):
 # print("\nnew model:")
 # print(new_smape_f, new_mae_f, new_mse_f, new_rmse_f, new_r2_f)
 # print(new_smape_l, new_mae_l, new_mse_l, new_rmse_l, new_r2_l)
-
-
-# ====================================================================================================
-# ====================================================================================================
-# ====================================================================================================
-
-
-def run_on_local_data(
-    trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
-):
-    """Train and test a forecasting model on local data only."""
-
-    if config.model == "SCINet":
-        local_model_wrapper = SCINet(config, config.input_size, config.forecast_horizon)
-    elif config.model == "Seq2Seq":
-        local_model_wrapper = Seq2Seq(
-            config, config.input_size, config.forecast_horizon
-        )
-    else:
-        raise NotImplementedError("Model not implemented")
-
-    loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
-        local_model_wrapper.train(trainloader, validloader, testloader)
-    )
-    return loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss
-
-
-def eval_isolated_client():
-    """Evaluate a model not participating in federated learning.
-    This is used for comparing performance of local training vs federated learning."""
-
-    set_seed(config.seed)
-    trainloaders, valloaders, testloaders, dataset_paths, min_vals, max_vals = (
-        get_experiment_data(
-            data_root=config.data_root,
-            num_clients=config.nbr_clients,
-            input_size=config.input_size,
-            forecast_horizon=config.forecast_horizon,
-            stride=config.stride,
-            batch_size=config.batch_size,
-            valid_set_size=config.valid_set_size,
-            test_set_size=config.test_set_size,
-        )
-    )
-    results = pd.DataFrame(columns=["cid", "smape", "mae", "mse", "rmse", "r2"])
-    for cid in range(config.nbr_clients):
-        loss_evol, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
-            run_on_local_data(trainloaders[cid], valloaders[cid], testloaders[cid])
-        )
-        new_row = pd.DataFrame(
-            {
-                "cid": [cid],
-                "dataset_path": [dataset_paths[cid]],
-                "smape": [smape_loss],
-                "mae": [mae_loss],
-                "mse": [mse_loss],
-                "rmse": [rmse_loss],
-                "r2": [r2_loss],
-            }
-        )
-        results = pd.concat([results, new_row], ignore_index=True)
-    results.to_csv("local_results.csv", index=False)
-
-
-if __name__ == "__main__":
-    eval_isolated_client()

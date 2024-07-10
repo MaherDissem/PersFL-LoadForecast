@@ -2,7 +2,7 @@ import flwr as fl
 
 from config import config
 from server import FedCustom
-from client import client_fn
+from clients.client import client_fn
 from metrics import evaluate
 from utils import fit_config, set_seed
 from flwr.common.logger import log

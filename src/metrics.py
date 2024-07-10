@@ -4,7 +4,7 @@ from flwr.common import Metrics
 
 from config import config as exp_config
 from dataset import get_experiment_data
-from model import ForecastingModel
+from clients.local_model import ForecastingModel
 
 
 trainloaders, valloaders, testloaders, _, _, _ = get_experiment_data(

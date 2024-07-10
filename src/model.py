@@ -8,10 +8,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from models.seq2seq.wrapper import ModelWrapper as Seq2Seq
-from models.SCINet.wrapper import ModelWrapper as SCINet
-from models.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
-from models.early_stop import EarlyStopping
+from forecasting.seq2seq.wrapper import ModelWrapper as Seq2Seq
+from forecasting.SCINet.wrapper import ModelWrapper as SCINet
+from forecasting.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
+from forecasting.early_stop import EarlyStopping
 from dataset import get_experiment_data
 from config import config
 from utils import set_seed

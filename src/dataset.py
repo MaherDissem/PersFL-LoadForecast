@@ -113,7 +113,7 @@ def get_experiment_data(
     batch_size: int,
     valid_set_size: int,
     test_set_size: int,
-) -> Tuple[List[DataLoader], List[DataLoader], List[DataLoader]]:
+) -> Tuple[List[DataLoader], List[DataLoader], List[DataLoader], List[str], List[float], List[float]]:
 
     trainloaders = []
     valloaders = []

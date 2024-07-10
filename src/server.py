@@ -19,7 +19,7 @@ from flwr.common import (
 )
 
 from config import config
-from clients.local_model import ForecastingModel
+from clients.base_model import ForecastingModel
 from metrics import evaluate
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
 from utils import set_seed

@@ -2,12 +2,14 @@ import flwr as fl
 
 from config import config
 from server import FedCustom
-from client import client_fn
+from clients.client import client_fn
 from metrics import evaluate
-from utils import fit_config
+from utils import fit_config, set_seed
+from flwr.common.logger import log
 
-
+set_seed(config.seed)
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
+log(msg=config(), level=20)
 
 fed_sparse_strategy = FedCustom(
     fraction_fit=config.fraction_fit,
@@ -24,5 +26,5 @@ fl.simulation.start_simulation(
     num_clients=config.nbr_clients,
     config=fl.server.ServerConfig(num_rounds=config.nbr_rounds),
     strategy=fed_sparse_strategy,
-    client_resources=config.client_resources,
+    client_resources={"num_cpus": config.num_cpus, "num_gpus": config.num_gpus}
 )

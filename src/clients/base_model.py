@@ -4,13 +4,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from models.SCINet.wrapper import ModelWrapper as SCINet
-from models.seq2seq.wrapper import ModelWrapper as Seq2Seq
-from config import config
-from dataset import get_clients_dataloaders
+from forecasting.seq2seq.wrapper import ModelWrapper as Seq2Seq
+from forecasting.SCINet.wrapper import ModelWrapper as SCINet
 
 
 class ForecastingModel:
+    """This module represents a forecasting model designed for federated learning (no personalization)."""
+
     def __init__(
         self,
         config,
@@ -59,37 +59,3 @@ class ForecastingModel:
             val.cpu().numpy()
             for _, val in self.model_wrapper.model.state_dict().items()
         ]
-
-
-def run_on_local_data(
-    trainloader: DataLoader, validloader: DataLoader, testloader: DataLoader
-):
-    """Train and test a forecasting model on local data only.
-    This is used for comparing performance of local training vs federated learning"""
-
-    model = ForecastingModel(
-        config=config,
-        trainloader=trainloader,
-        validloader=validloader,
-        testloader=testloader,
-    )
-    model.train()
-    smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = model.test()
-    print(
-        f"Test Losses: smape={smape_loss:.2f}, mae={mae_loss:.2f}, mse={mse_loss:.2f}, rmse={rmse_loss:.2f}, r2={r2_loss:.2f}"
-    )
-
-
-if __name__ == "__main__":
-    cid = 0
-    trainloaders, valloaders, testloaders = get_clients_dataloaders(
-        data_root=config.data_root,
-        num_clients=config.nbr_clients,
-        input_size=config.input_size,
-        forecast_horizon=config.forecast_horizon,
-        stride=config.stride,
-        batch_size=config.batch_size,
-        valid_set_size=config.valid_set_size,
-        test_set_size=config.test_set_size,
-    )
-    run_on_local_data(trainloaders[cid], valloaders[cid], testloaders[cid])

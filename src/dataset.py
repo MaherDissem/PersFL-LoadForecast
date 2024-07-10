@@ -1,11 +1,14 @@
 from typing import List, Tuple
 import glob
+from natsort import natsorted
 import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from functools import lru_cache
 
 from config import config
+from preprocess_dataset import normalize
 
 
 class DatasetForecasting(torch.utils.data.Dataset):
@@ -13,10 +16,11 @@ class DatasetForecasting(torch.utils.data.Dataset):
         self, csv_file: str, input_size: int, forcast_horizon: int, stride: int
     ) -> None:
         super().__init__()
-        self.df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
         self.input_size = input_size
         self.forcast_horizon = forcast_horizon
         self.stride = stride
+        self.df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
+        self.df, self.min_val, self.max_val = normalize(self.df)
 
         self.X, self.y = self.run_sliding_window(self.df)
 
@@ -56,7 +60,7 @@ class DatasetForecasting(torch.utils.data.Dataset):
         return len(self.X)
 
 
-def get_data_loaders(
+def get_client_data(
     csv_file: str,
     input_size: int,
     forcast_horizon: int,
@@ -64,7 +68,7 @@ def get_data_loaders(
     batch_size: int,
     valid_set_size: int,
     test_set_size: int,
-) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[DataLoader, DataLoader, DataLoader, float, float]:
 
     dataset = DatasetForecasting(csv_file, input_size, forcast_horizon, stride)
     train_size = int(len(dataset) * (1 - valid_set_size - test_set_size))
@@ -96,10 +100,11 @@ def get_data_loaders(
         pin_memory=True,
         drop_last=True,
     )
-    return trainloader, validloader, testloader
+    return trainloader, validloader, testloader, dataset.min_val, dataset.max_val
 
 
-def get_clients_dataloaders(
+@lru_cache(maxsize=1) # cache the result of this function as it is called multiple times
+def get_experiment_data(
     data_root: str,
     num_clients: int,
     input_size: int,
@@ -108,17 +113,20 @@ def get_clients_dataloaders(
     batch_size: int,
     valid_set_size: int,
     test_set_size: int,
-) -> Tuple[List[DataLoader], List[DataLoader], List[DataLoader]]:
+) -> Tuple[List[DataLoader], List[DataLoader], List[DataLoader], List[str], List[float], List[float]]:
 
     trainloaders = []
     valloaders = []
     testloaders = []
-    assert num_clients <= len(
-        glob.glob(data_root + "/*.csv")
-    ), "Querying more clients than available"
+    min_vals = []
+    max_vals = []
 
-    for i, csv_file in enumerate(glob.glob(data_root + "/*.csv")):
-        trainloader, validloader, testloader = get_data_loaders(
+    csv_paths = glob.glob(data_root + "/*.csv")
+    csv_paths = natsorted(csv_paths)
+    assert num_clients <= len(csv_paths), "Querying more clients than available"
+
+    for i, csv_file in enumerate(csv_paths):
+        trainloader, validloader, testloader, min_val, max_val = get_client_data(
             csv_file,
             input_size,
             forecast_horizon,
@@ -130,6 +138,9 @@ def get_clients_dataloaders(
         trainloaders.append(trainloader)
         valloaders.append(validloader)
         testloaders.append(testloader)
+        min_vals.append(min_val)
+        max_vals.append(max_val)
+
         if i == num_clients - 1:
             break
 
@@ -141,11 +152,11 @@ def get_clients_dataloaders(
             # when its <batch_size, droping last batch (seq2seq requires this) will yield 0 sized batches and errors
             # TODO look into this
 
-    return trainloaders, valloaders, testloaders
+    return trainloaders, valloaders, testloaders, csv_paths, min_vals, max_vals
 
 
 if __name__ == "__main__":
-    get_clients_dataloaders(  # for debugging
+    get_experiment_data(  # for debugging
         data_root="data/processed",
         num_clients=20,
         input_size=24 * 6,

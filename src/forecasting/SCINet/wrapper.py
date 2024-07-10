@@ -135,7 +135,6 @@ class ModelWrapper:
 
         for epoch in range(epoch_start, self.args.epochs):
             self.model.train()
-            total_loss = 0.0
             epoch_loss = 0.0
             adjust_learning_rate(optim, epoch, self.args)
 
@@ -160,7 +159,6 @@ class ModelWrapper:
 
                 # backpropagate
                 loss.backward()
-                total_loss += loss.item()
                 optim.step()
 
             epoch_loss /= len(trainloader)  # average loss per batch

@@ -1,6 +1,7 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from logging import WARNING
 
+import pandas as pd
 import flwr as fl
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
@@ -18,9 +19,10 @@ from flwr.common import (
 )
 
 from config import config
-from model import ForecastingModel
+from clients.base_model import ForecastingModel
 from metrics import evaluate
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
+from utils import set_seed
 
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
@@ -84,6 +86,7 @@ class FedCustom(fl.server.strategy.Strategy):
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
         super().__init__()
+        set_seed(config.seed)
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.min_fit_clients = min_fit_clients
@@ -209,13 +212,17 @@ class FedCustom(fl.server.strategy.Strategy):
         """Configure the next round of evaluation. Provide new model parameters and send instructions via config."""
         if self.fraction_evaluate == 0.0:
             return []
-        config = {}
-        evaluate_ins = EvaluateIns(parameters, config)
+        config_ins = {}
+        evaluate_ins = EvaluateIns(parameters, config_ins)
 
         # Sample clients
         sample_size, min_num_clients = self.num_evaluation_clients(
             client_manager.num_available()
         )
+        if server_round == config.nbr_rounds:  # For the last round, sample all clients
+            sample_size = client_manager.num_available()
+            min_num_clients = client_manager.num_available()
+
         clients = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_clients
         )
@@ -234,6 +241,7 @@ class FedCustom(fl.server.strategy.Strategy):
         if not results:
             return None, {}
 
+        # Aggregate loss
         loss_aggregated = weighted_loss_avg(
             [
                 (evaluate_res.num_examples, evaluate_res.loss)
@@ -241,10 +249,30 @@ class FedCustom(fl.server.strategy.Strategy):
             ]
         )
 
+        # Aggregate metrics
         metrics_aggregated = {}
-        for  _, evaluate_res in results:
+        for _, evaluate_res in results:
             metrics = evaluate_res.metrics
             cid = evaluate_res.metrics["cid"]
             metrics.pop("cid")
             metrics_aggregated[cid] = metrics
+
+        # Save metrics to a csv file for the last round
+        if server_round == config.nbr_rounds:
+            results = pd.DataFrame(columns=["cid", "smape", "mae", "mse", "rmse", "r2"])
+            for cid, metrics in metrics_aggregated.items():
+                new_row = pd.DataFrame(
+                    {
+                        "cid": [int(cid)],
+                        "smape": [metrics["smape"]],
+                        "mae": [metrics["mae"]],
+                        "mse": [metrics["mse"]],
+                        "rmse": [metrics["rmse"]],
+                        "r2": [metrics["r2"]],
+                    }
+                )
+                results = pd.concat([results, new_row], ignore_index=True)
+            results = results.sort_values(by="cid")
+            results.to_csv("results.csv", index=False)
+
         return loss_aggregated, metrics_aggregated

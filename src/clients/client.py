@@ -14,17 +14,24 @@ from flwr.common import (
 )
 
 from config import config
-from dataset import get_clients_dataloaders
+from dataset import get_experiment_data
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
-from model import ForecastingModel
+from clients.base_model import ForecastingModel
+from clients.mixed_model import PersForecastingModel
+from utils import set_seed
 
 
 class FlowerClient(fl.client.Client):
-    def __init__(self, cid, model):
-        self.cid = cid
+    def __init__(self, model, cid, dataset_path, min_val, max_val):
         self.model = model
+        self.cid = cid
+        self.dataset_path = dataset_path
+        self.min_val = min_val
+        self.max_val = max_val
+        set_seed(config.seed)
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
+        """Return the current parameters of the client's federated model."""
         # Get parameters as a list of NumPy ndarray's
         ndarrays: List[np.ndarray] = self.model.get_parameters()
 
@@ -39,6 +46,7 @@ class FlowerClient(fl.client.Client):
         )
 
     def fit(self, ins: FitIns) -> FitRes:
+        """Set the parameters of the client's federated model to the server parameters, train the model, and return the updated parameters of the federated component."""
         # Deserialize parameters to NumPy ndarray's using our custom function
         parameters_original = ins.parameters
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
@@ -61,6 +69,7 @@ class FlowerClient(fl.client.Client):
         )
 
     def evaluate(self, ins: EvaluateIns) -> EvaluateRes:
+        """Set the parameters of the client's federated model to the server parameters, retrain and evaluate the model, and return the evaluation metrics."""
         # Deserialize parameters to NumPy ndarray's using our custom function
         parameters_original = ins.parameters
         ndarrays_original = sparse_parameters_to_ndarrays(parameters_original)
@@ -68,13 +77,9 @@ class FlowerClient(fl.client.Client):
         # Load server model into local client model
         self.model.set_parameters(ndarrays_original)
 
-        # personalization
-        # TODO: implement personalization
-
-        # Evaluate local model
-        smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = (
-            self.model.test()
-        )  # TODO eval on either val or test set depending on ins.mode
+        # Evaluate local model:
+        # train the local model trained with new federated parameters. Metrics returned are for the test data.
+        _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
         loss = smape_loss  # TODO FIXME
         metrics = {
             "cid": self.cid,  # not a metric, but useful for evaluation
@@ -96,29 +101,39 @@ class FlowerClient(fl.client.Client):
 
 
 def client_fn(cid: str) -> FlowerClient:
-    """Create a Flower client representing a single organization."""
-
+    """Create a Flower client from a single building's data (identified by cid)."""
     # Load data
-    # Note: each client will train and evaluate on their own unique data
-    trainloaders, valloaders, testloaders = get_clients_dataloaders(
-        data_root=config.data_root,
-        num_clients=config.nbr_clients,
-        input_size=config.input_size,
-        forecast_horizon=config.forecast_horizon,
-        stride=config.stride,
-        batch_size=config.batch_size,
-        valid_set_size=config.valid_set_size,
-        test_set_size=config.test_set_size,
+    trainloaders, valloaders, testloaders, csv_paths, min_vals, max_vals = (
+        get_experiment_data(
+            data_root=config.data_root,
+            num_clients=config.nbr_clients,
+            input_size=config.input_size,
+            forecast_horizon=config.forecast_horizon,
+            stride=config.stride,
+            batch_size=config.batch_size,
+            valid_set_size=config.valid_set_size,
+            test_set_size=config.test_set_size,
+        )
     )
     # Load model
     os.makedirs("weights", exist_ok=True)
     config.checkpoint_path = f"weights/model_{cid}.pth"
     config.seed = config.seed + int(cid)
-    model = ForecastingModel(
-        config=config,
-        trainloader=trainloaders[int(cid)],
-        validloader=valloaders[int(cid)],
-        testloader=testloaders[int(cid)],
-    )
+    if config.personalization:
+        model = PersForecastingModel(
+            config=config,
+            trainloader=trainloaders[int(cid)],
+            validloader=valloaders[int(cid)],
+            testloader=testloaders[int(cid)],
+        )
+    else:
+        model = ForecastingModel(
+            config=config,
+            trainloader=trainloaders[int(cid)],
+            validloader=valloaders[int(cid)],
+            testloader=testloaders[int(cid)],
+        )
     # Create a single Flower client representing representing a single building (single data source)
-    return FlowerClient(cid, model)
+    return FlowerClient(
+        model, cid, csv_paths[int(cid)], min_vals[int(cid)], max_vals[int(cid)]
+    )

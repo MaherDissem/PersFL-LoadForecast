@@ -1,3 +1,9 @@
+import os
+import random
+import numpy as np
+import torch
+
+
 def fit_config(server_round: int):
     """Return training configuration dict for each round.
 
@@ -7,6 +13,19 @@ def fit_config(server_round: int):
     # this code is here for referece, these parameters are not used by clients for now
     config = {
         "server_round": server_round,  # The current round of federated learning
-        "local_epochs": 1 if server_round < 2 else 2,  #
+        "local_epochs": 1 if server_round < 2 else 2,
     }
     return config
+
+
+def set_seed(seed: int):
+    """Set random seed for reproducibility."""
+    os.environ['PYTHONHASHSEED'] = str(seed) 
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.cuda.manual_seed(seed) 
+    torch.cuda.manual_seed_all(seed)
+    

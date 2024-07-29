@@ -8,7 +8,6 @@ class config: # TODO upper case
     # Clients parameters
     data_root: str = "data/processed"
     nbr_clients: int = 20
-    nbr_rounds: int = 30
     personalization: bool = True
 
     # Dataloader parameters
@@ -17,13 +16,14 @@ class config: # TODO upper case
     test_set_size: int = 0.15
 
     # Server parameters
+    nbr_rounds: int = 30 # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
     fraction_fit: float = 20 / 20       # TODO make lower
     fraction_evaluate: float = 20 / 20  # TODO make lower
     min_available_clients: int = 3
     min_fit_clients: int = 2
     min_evaluate_clients: int = 2
 
-    # Experiment parameters
+    # Experiment results
     log_file: str = "log.txt"
 
     # Resources
@@ -32,6 +32,16 @@ class config: # TODO upper case
     )
     num_cpus: int = 1
     num_gpus: float = 1.0 if device.type == "cuda" else 0.0
+
+    # Client clustering parameters
+    cluster_clients: bool = True
+    n_clusters: int = 3
+    clustering_seq_len = 24 * 7
+    nbr_clustering_rounds: int = 10
+    nbr_inter_cluster_rounds: int = 15
+    clustering_alpha: float = 1e-0
+    filter_outliers: bool = True
+    outliers_threshold: float = 0.95
 
     # Model mixing parameters
     mu: float = 0.01
@@ -45,7 +55,7 @@ class config: # TODO upper case
     nbr_var: int = 1
     stride: int = 24
     # Forecasting training parameters
-    epochs: int = 200
+    epochs: int = 1
     patience: int = 20
     lr: float = 1e-3
     eval_every: int = 10

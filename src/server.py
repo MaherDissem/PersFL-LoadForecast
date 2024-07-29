@@ -1,7 +1,8 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
-from logging import WARNING
+from logging import INFO, WARNING
 
 import pandas as pd
+import torch
 import flwr as fl
 from flwr.common.logger import log
 from flwr.server.client_proxy import ClientProxy
@@ -23,6 +24,7 @@ from clients.base_model import ForecastingModel
 from metrics import evaluate
 from communication import ndarrays_to_sparse_parameters, sparse_parameters_to_ndarrays
 from utils import set_seed
+from utils import plot_cluster_centroids
 
 WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW = """
 Setting `min_available_clients` lower than `min_fit_clients` or
@@ -103,6 +105,16 @@ class FedCustom(fl.server.strategy.Strategy):
     def __repr__(self) -> str:
         return "FedCustom"
 
+    def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
+        """Return sample size and required number of clients."""
+        num_clients = int(num_available_clients * self.fraction_fit)
+        return max(num_clients, self.min_fit_clients), self.min_available_clients
+
+    def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
+        """Use a fraction of available clients for evaluation."""
+        num_clients = int(num_available_clients * self.fraction_evaluate)
+        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
+
     def initialize_parameters(
         self, client_manager: ClientManager
     ) -> Optional[Parameters]:
@@ -116,61 +128,59 @@ class FedCustom(fl.server.strategy.Strategy):
         ndarrays = model.get_parameters()
         return fl.common.ndarrays_to_parameters(ndarrays)
 
-    def num_fit_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Return sample size and required number of clients."""
-        num_clients = int(num_available_clients * self.fraction_fit)
-        return max(num_clients, self.min_fit_clients), self.min_available_clients
-
-    def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
-        """Use a fraction of available clients for evaluation."""
-        num_clients = int(num_available_clients * self.fraction_evaluate)
-        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
-
-    def evaluate(
-        self, server_round: int, parameters: Parameters
-    ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
-        """Evaluate parameters on server-side model using an evaluation function."""
-        if self.evaluate_fn is None:
-            # No evaluation function provided
-            return None
-
-        # We deserialize using our custom method
-        parameters_ndarrays = sparse_parameters_to_ndarrays(parameters)
-
-        eval_res = self.evaluate_fn(server_round, parameters_ndarrays, {})
-        if eval_res is None:
-            return None
-        loss, metrics = eval_res
-        return loss, metrics
+    def init_cluster_centroids(self):
+        set_seed(19)
+        self.cluster_centroids = []
+        for k in range(config.n_clusters):
+            self.cluster_centroids.append(torch.rand(config.clustering_seq_len, 1))
+        return self.cluster_centroids
 
     def configure_fit(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
     ) -> List[Tuple[ClientProxy, FitIns]]:
         """Configure the next round of training."""
-
-        # Sample clients to use in this round
         sample_size, min_num_clients = self.num_fit_clients(
             client_manager.num_available()
         )
+        sample_size = client_manager.num_available() if server_round <= config.nbr_clustering_rounds else sample_size # Call all clients for clustering
         clients = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_clients
         )
-
-        # Create custom configs
-        # this code is here for referece, these parameters are not used by clients for now
-        n_clients = len(clients)
-        half_clients = n_clients // 2
-        standard_config = {"lr": 0.001}
-        higher_lr_config = {"lr": 0.003}
-        fit_configurations = []
-        for idx, client in enumerate(clients):
-            if idx < half_clients:
-                fit_configurations.append((client, FitIns(parameters, standard_config)))
-            else:
-                fit_configurations.append(
-                    (client, FitIns(parameters, higher_lr_config))
-                )
-        return fit_configurations
+      
+        # Set up the configuration for each client
+        if config.cluster_clients:
+            # Clustering rounds
+            if server_round <= config.nbr_clustering_rounds:
+                log(INFO, f"Server round {server_round}: Clustering round")
+                fit_configurations = []
+                ins_config = {"server_round": server_round,}
+                parameters = self.init_cluster_centroids() if server_round == 1 else self.cluster_centroids
+                parameters = ndarrays_to_sparse_parameters(parameters)
+                for client in clients:
+                    fit_configurations.append((client, FitIns(parameters, ins_config)))
+                return fit_configurations
+            
+            # Training rounds
+            # inter-cluster rounds
+            if server_round > config.nbr_clustering_rounds and server_round <= config.nbr_clustering_rounds + config.nbr_inter_cluster_rounds:
+                log(INFO, f"Server round {server_round}: Clustered training round")
+                fit_configurations = []
+                for client in clients:
+                    # Send cluster parameters to corresponding clients
+                    parameters = self.cluster_weights[self.cluster_assignments[client.cid]]
+                    ins_config = {"server_round": server_round}
+                    fit_configurations.append((client, FitIns(parameters, ins_config)))
+                return fit_configurations
+        
+        # Global model training rounds after clustering or clustering is disabled
+        else:
+            log(INFO, f"Server round {server_round}: Global training round")
+            fit_configurations = []
+            for client in clients:
+                # Send global model parameters to all clients
+                ins_config = {"server_round": server_round}
+                fit_configurations.append((client, FitIns(parameters, ins_config)))
+            return fit_configurations
 
     def aggregate_fit(
         self,
@@ -180,23 +190,97 @@ class FedCustom(fl.server.strategy.Strategy):
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """Aggregate fit results using weighted average (FedAvg algorithm)."""
         if not results:
+            log(WARNING, f"Server round {server_round}: No results to aggregate")
             return None, {}
         # Do not aggregate if there are failures and failures are not accepted
         if not self.accept_failures and failures:
             return None, {}
 
-        # We deserialize each of the results with our custom method
-        weights_results = [
-            (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-            for _, fit_res in results
-        ]
+        if config.cluster_clients:
+            # Clustering rounds
+            if server_round < config.nbr_clustering_rounds:
+                # Aggregate clinet submissions
+                j_clients = []
+                v_clients = []
+                for _, fit_res in results:
+                    # Undo the sparse matrix transformation used to save bandwidth
+                    stacked_j_v = sparse_parameters_to_ndarrays(fit_res.parameters)
+                    stacked_j_v = torch.stack([
+                        torch.tensor(arr) if arr.shape[-1] > 0 else torch.zeros(config.clustering_seq_len + 1, 1)
+                        for arr in stacked_j_v
+                    ])
+                    j = stacked_j_v[:, :-1, :]
+                    v = stacked_j_v[:, -1, :].squeeze()
+                    j_clients.append(j)
+                    v_clients.append(v)
+                j_sum = torch.sum(torch.stack(j_clients), dim=0)
+                v_sum = torch.sum(torch.stack(v_clients), dim=0)
+                # Update cluster centroids
+                for k in range(config.n_clusters):
+                    self.cluster_centroids[k] += config.clustering_alpha * (j_sum[k] / v_sum[k] if v_sum[k] else 0)
+                return None, {}
+            
+            # Cluster assignement round
+            if server_round == config.nbr_clustering_rounds:
+                log(INFO, "Clustering done.")
+                # Find what cluster each client assigned themselves to
+                self.cluster_assignments = {}
+                for _, fit_res in results:
+                    cid, cluster = fit_res.metrics["cid"], fit_res.metrics["cluster_id"]
+                    self.cluster_assignments[cid] = cluster
+                # Plot cluster centroids
+                plot_cluster_centroids(self.cluster_centroids, config.n_clusters)
+                # Initialize cluster weights
+                self.cluster_weights = {}
+                for cluster_id in range(config.n_clusters):
+                    self.cluster_weights[cluster_id] = self.initialize_parameters(None)
+                return None, {}
+            
+            # Training rounds: inter-cluster weights aggregation
+            # We deserialize the results with our custom method
+            weights_results = [
+                (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, fit_res.metrics["cid"])
+                for _, fit_res in results
+            ]
 
-        # We aggregate and serialize results using our custom method
-        parameters_aggregated = ndarrays_to_sparse_parameters(
-            aggregate(weights_results)
-        )
+            # Group by cluster_id
+            cluster_results = {}
+            for weights, num_examples, cid in weights_results:
+                cluster_id = self.cluster_assignments[cid]
+                if cluster_id not in cluster_results:
+                    cluster_results[cluster_id] = []
+                cluster_results[cluster_id].append((weights, num_examples))
+
+            # Aggregate client models by cluster
+            self.cluster_weights = {}
+            cluster_weights_n_samples = {}
+            for cluster_id, cluster_results in cluster_results.items():
+                aggr_weights = aggregate(cluster_results)
+                serialized_weights = ndarrays_to_sparse_parameters(aggr_weights)
+                self.cluster_weights[cluster_id] = serialized_weights
+
+                cluster_total_samples = sum([num_examples for _, num_examples in cluster_results])
+                cluster_weights_n_samples[cluster_id] = aggr_weights, cluster_total_samples
+
+            # Aggregate cluster weights into global model: intra-cluster aggregation
+            parameters_aggregated = aggregate(cluster_weights_n_samples.values())
+        
+        else:
+            # Client aggregation is diabled
+            # We deserialize the results with our custom method
+            weights_results = [
+                (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                for _, fit_res in results
+            ]
+
+            # We aggregate and serialize results back
+            parameters_aggregated = aggregate(weights_results)
+    
+        # Serialize the aggregated weights
+        serialized_aggr_parameters = ndarrays_to_sparse_parameters(parameters_aggregated)
 
         # Aggregate custom metrics if aggregation fn was provided
+        # TODO add metrics aggregation by cluster
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
@@ -204,7 +288,8 @@ class FedCustom(fl.server.strategy.Strategy):
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
 
-        return parameters_aggregated, metrics_aggregated
+        return serialized_aggr_parameters, metrics_aggregated
+        
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -226,6 +311,7 @@ class FedCustom(fl.server.strategy.Strategy):
         clients = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_clients
         )
+        # TODO how to eval during clustering rounds?
 
         # Return client/config pairs
         return [(client, evaluate_ins) for client in clients]
@@ -276,3 +362,21 @@ class FedCustom(fl.server.strategy.Strategy):
             results.to_csv("results.csv", index=False)
 
         return loss_aggregated, metrics_aggregated
+
+
+    def evaluate(
+        self, server_round: int, parameters: Parameters
+    ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
+        """Evaluate parameters on server-side model using an evaluation function."""
+        if self.evaluate_fn is None:
+            # No evaluation function provided
+            return None
+
+        # We deserialize using our custom method
+        parameters_ndarrays = sparse_parameters_to_ndarrays(parameters)
+
+        eval_res = self.evaluate_fn(server_round, parameters_ndarrays, {})
+        if eval_res is None:
+            return None
+        loss, metrics = eval_res
+        return loss, metrics

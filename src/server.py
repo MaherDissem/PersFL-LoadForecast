@@ -297,7 +297,7 @@ class FedCustom(fl.server.strategy.Strategy):
         """Configure the next round of evaluation. Provide new model parameters and send instructions via config."""
         if self.fraction_evaluate == 0.0:
             return []
-        config_ins = {}
+        config_ins = {"server_round": server_round,}
         evaluate_ins = EvaluateIns(parameters, config_ins)
 
         # Sample clients

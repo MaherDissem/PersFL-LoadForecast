@@ -129,8 +129,10 @@ class FlowerClient(fl.client.Client):
         # Evaluate local model:
         # train the local model trained with new federated parameters. Metrics returned are for the test data.
 
-        _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
-        # loss, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = 0, 0, 0, 0, 0, 0
+        if ins.config["server_round"] < self.config.nbr_clustering_rounds:
+            loss, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = 0, 0, 0, 0, 0, 0
+        else:
+             _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
         loss = smape_loss  # TODO FIXME
         metrics = {
             "cid": self.cid,  # not a metric, but useful for evaluation

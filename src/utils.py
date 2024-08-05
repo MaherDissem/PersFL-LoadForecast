@@ -1,5 +1,6 @@
 import os
 import random
+from typing import List
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -31,7 +32,7 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-def plot_cluster_centroids(cluster_centroids, n_clusters):
+def plot_cluster_centroids(cluster_centroids: List[torch.tensor], n_clusters: int):
     plt.figure(figsize=(15, 5))
     for k in range(n_clusters):
         plt.plot(cluster_centroids[k].detach().numpy(), label=f"Cluster {k}")

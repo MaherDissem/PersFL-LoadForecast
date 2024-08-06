@@ -9,7 +9,11 @@ from torch.utils.data import DataLoader
 
 from forecasting.seq2seq.wrapper import ModelWrapper as Seq2Seq
 from forecasting.SCINet.wrapper import ModelWrapper as SCINet
-from forecasting.SCINet.wrapper import smooth_l1_loss, adjust_learning_rate, smooth_l1_loss
+from forecasting.SCINet.wrapper import (
+    smooth_l1_loss,
+    adjust_learning_rate,
+    smooth_l1_loss,
+)
 from forecasting.early_stop import EarlyStopping
 from utils import set_seed
 
@@ -76,17 +80,19 @@ class PersForecastingModel(nn.Module):
             else nn.MSELoss(size_average=False).cuda()
         )
 
-    def infer(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def infer(
+        self, inputs: torch.Tensor, targets: torch.Tensor, alpha: float = None
+    ) -> torch.Tensor:
         """Perform inference and calculate loss depending on the model type (set in config)."""
         if self.args.model == "SCINet":
             if self.args.stacks == 1:
-                forecast = self(inputs)
+                forecast = self(inputs, alpha)
                 loss = self.criterion(forecast, targets)
             if self.args.stacks == 2:
-                forecast, mid = self(inputs)
+                forecast, mid = self(inputs, alpha)
                 loss = self.criterion(forecast, targets) + self.criterion(mid, targets)
         elif self.args.model == "Seq2Seq":
-            forecast = self(inputs)
+            forecast = self(inputs, alpha)
             loss = self.criterion(forecast, targets)
         else:
             raise NotImplementedError("Model not implemented")
@@ -101,7 +107,7 @@ class PersForecastingModel(nn.Module):
     def forward(self, x: torch.Tensor, alpha: float = None) -> torch.Tensor:
         """Randomly mixes the local and federated models and perform inference."""
         if alpha is None:
-            alpha = self._sample_alpha()
+            alpha = self._sample_alpha()  # Different alpha for every batch
         # Interpolate the parameters of model1 and model2
         for param_l, param_f, param_m in zip(
             self.model_l.parameters(),
@@ -144,13 +150,10 @@ class PersForecastingModel(nn.Module):
         # Load local model from saved checkpoint
         if os.path.exists(self.args.checkpoint_path):  # doesn't exist at server side
             self.load_parameters(torch.load(self.args.checkpoint_path))
-            # TODO save and load optimal local model weights
         # Load federated model from server
         params_dict = zip(self.model_f.state_dict().keys(), parameters)
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
         self.model_f.load_state_dict(state_dict, strict=True)
-
-        # torch.save(parameters, "aggregated_parameters.pth") # TODO remove this debug line
 
     def get_parameters(self) -> List[np.ndarray]:
         """Send federated client model parameters to server."""
@@ -281,7 +284,6 @@ class PersForecastingModel(nn.Module):
             )
         else:
             # Eval different models from the low loss subspace on valid set
-            # Then, evaluate the best one on the test set (Superfed paper)
             results = []
             for alpha in np.arange(0, 1.1, 0.1):
                 smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
@@ -290,9 +292,11 @@ class PersForecastingModel(nn.Module):
                 results.append(
                     (alpha, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss)
                 )
+            # Find the best alpha (lowest loss)
             best_alpha, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = min(
-                results, key=lambda x: x[1]
+                results, key=lambda x: x[3]
             )
+            # Then, evaluate the best alpha on the test set (Superfed paper)
             smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self._validate(
                 testloader, alpha=best_alpha
             )
@@ -313,7 +317,13 @@ class PersForecastingModel(nn.Module):
             inputs = inputs.to(self.device)  # [batch_size, window_size, n_var]
             targets = targets.to(self.device)  # [batch_size, horizon, n_var]
             with torch.no_grad():
-                if model is not None:
+                if model is None:
+                    # Use the mixed model (self) for a given alpha
+                    self.model_l.eval()
+                    self.model_f.eval()
+                    self.model_m.eval()
+                    outputs, _ = self.infer(inputs, targets, alpha)
+                else:
                     # Use the provided model
                     model.eval()
                     if self.args.model == "SCINet":
@@ -323,12 +333,6 @@ class PersForecastingModel(nn.Module):
                             outputs, _ = model(inputs)
                     elif self.args.model == "Seq2Seq":
                         outputs = model(inputs)
-                else:
-                    # Use the mixed model (self) for a given alpha
-                    self.model_l.eval()
-                    self.model_f.eval()
-                    self.model_m.eval()
-                    outputs, _ = self.infer(inputs, targets)
             # sMAPE
             absolute_percentage_errors = (
                 2

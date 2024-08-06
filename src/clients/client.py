@@ -127,9 +127,8 @@ class FlowerClient(fl.client.Client):
         self.model.set_parameters(ndarrays_original)
 
         # Evaluate local model:
-        # train the local model trained with new federated parameters. Metrics returned are for the test data.
-
-        if ins.config["server_round"] < self.config.nbr_clustering_rounds:
+        # train the local model by mixing it with the newly aggregated parameters. Metrics returned are for the test data.
+        if self.config.cluster_clients and ins.config["server_round"] < self.config.nbr_clustering_rounds:
             loss, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = 0, 0, 0, 0, 0, 0
         else:
              _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()

@@ -129,7 +129,7 @@ class FedCustom(fl.server.strategy.Strategy):
         return fl.common.ndarrays_to_parameters(ndarrays)
 
     def init_cluster_centroids(self):
-        set_seed(19)
+        set_seed(88)
         self.cluster_centroids = []
         for k in range(config.n_clusters):
             self.cluster_centroids.append(torch.rand(config.clustering_seq_len, 1))
@@ -142,36 +142,52 @@ class FedCustom(fl.server.strategy.Strategy):
         sample_size, min_num_clients = self.num_fit_clients(
             client_manager.num_available()
         )
-        sample_size = client_manager.num_available() if server_round <= config.nbr_clustering_rounds else sample_size # Call all clients for clustering
+        sample_size = (
+            client_manager.num_available()
+            if server_round <= config.nbr_clustering_rounds
+            else sample_size
+        )  # Call all clients for clustering
         clients = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_clients
         )
-      
+
         # Set up the configuration for each client
         if config.cluster_clients:
             # Clustering rounds
             if server_round <= config.nbr_clustering_rounds:
                 log(INFO, f"Server round {server_round}: Clustering round")
                 fit_configurations = []
-                ins_config = {"server_round": server_round,}
-                parameters = self.init_cluster_centroids() if server_round == 1 else self.cluster_centroids
+                ins_config = {
+                    "server_round": server_round,
+                }
+                parameters = (
+                    self.init_cluster_centroids()
+                    if server_round == 1
+                    else self.cluster_centroids
+                )
                 parameters = ndarrays_to_sparse_parameters(parameters)
                 for client in clients:
                     fit_configurations.append((client, FitIns(parameters, ins_config)))
                 return fit_configurations
-            
+
             # Training rounds
             # inter-cluster rounds
-            if server_round > config.nbr_clustering_rounds and server_round <= config.nbr_clustering_rounds + config.nbr_inter_cluster_rounds:
+            if (
+                server_round > config.nbr_clustering_rounds
+                and server_round
+                <= config.nbr_clustering_rounds + config.nbr_inter_cluster_rounds
+            ):
                 log(INFO, f"Server round {server_round}: Clustered training round")
                 fit_configurations = []
                 for client in clients:
                     # Send cluster parameters to corresponding clients
-                    parameters = self.cluster_weights[self.cluster_assignments[client.cid]]
+                    parameters = self.cluster_weights[
+                        self.cluster_assignments[client.cid]
+                    ]
                     ins_config = {"server_round": server_round}
                     fit_configurations.append((client, FitIns(parameters, ins_config)))
                 return fit_configurations
-        
+
         # Global model training rounds after clustering or clustering is disabled
         else:
             log(INFO, f"Server round {server_round}: Global training round")
@@ -205,10 +221,16 @@ class FedCustom(fl.server.strategy.Strategy):
                 for _, fit_res in results:
                     # Undo the sparse matrix transformation used to save bandwidth
                     stacked_j_v = sparse_parameters_to_ndarrays(fit_res.parameters)
-                    stacked_j_v = torch.stack([
-                        torch.tensor(arr) if arr.shape[-1] > 0 else torch.zeros(config.clustering_seq_len + 1, 1)
-                        for arr in stacked_j_v
-                    ])
+                    stacked_j_v = torch.stack(
+                        [
+                            (
+                                torch.tensor(arr)
+                                if arr.shape[-1] > 0
+                                else torch.zeros(config.clustering_seq_len + 1, 1)
+                            )
+                            for arr in stacked_j_v
+                        ]
+                    )
                     j = stacked_j_v[:, :-1, :]
                     v = stacked_j_v[:, -1, :].squeeze()
                     j_clients.append(j)
@@ -217,9 +239,11 @@ class FedCustom(fl.server.strategy.Strategy):
                 v_sum = torch.sum(torch.stack(v_clients), dim=0)
                 # Update cluster centroids
                 for k in range(config.n_clusters):
-                    self.cluster_centroids[k] += config.clustering_alpha * (j_sum[k] / v_sum[k] if v_sum[k] else 0)
+                    self.cluster_centroids[k] += config.clustering_alpha * (
+                        j_sum[k] / v_sum[k] if v_sum[k] else 0
+                    )
                 return None, {}
-            
+
             # Cluster assignement round
             if server_round == config.nbr_clustering_rounds:
                 log(INFO, "Clustering done.")
@@ -235,11 +259,15 @@ class FedCustom(fl.server.strategy.Strategy):
                 for cluster_id in range(config.n_clusters):
                     self.cluster_weights[cluster_id] = self.initialize_parameters(None)
                 return None, {}
-            
+
             # Training rounds: inter-cluster weights aggregation
             # We deserialize the results with our custom method
             weights_results = [
-                (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples, fit_res.metrics["cid"])
+                (
+                    sparse_parameters_to_ndarrays(fit_res.parameters),
+                    fit_res.num_examples,
+                    fit_res.metrics["cid"],
+                )
                 for _, fit_res in results
             ]
 
@@ -259,28 +287,37 @@ class FedCustom(fl.server.strategy.Strategy):
                 serialized_weights = ndarrays_to_sparse_parameters(aggr_weights)
                 self.cluster_weights[cluster_id] = serialized_weights
 
-                cluster_total_samples = sum([num_examples for _, num_examples in cluster_results])
-                cluster_weights_n_samples[cluster_id] = aggr_weights, cluster_total_samples
+                cluster_total_samples = sum(
+                    [num_examples for _, num_examples in cluster_results]
+                )
+                cluster_weights_n_samples[cluster_id] = (
+                    aggr_weights,
+                    cluster_total_samples,
+                )
 
             # Aggregate cluster weights into global model: intra-cluster aggregation
             parameters_aggregated = aggregate(cluster_weights_n_samples.values())
-        
+
         else:
             # Client aggregation is diabled
             # We deserialize the results with our custom method
             weights_results = [
-                (sparse_parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+                (
+                    sparse_parameters_to_ndarrays(fit_res.parameters),
+                    fit_res.num_examples,
+                )
                 for _, fit_res in results
             ]
 
             # We aggregate and serialize results back
             parameters_aggregated = aggregate(weights_results)
-    
+
         # Serialize the aggregated weights
-        serialized_aggr_parameters = ndarrays_to_sparse_parameters(parameters_aggregated)
+        serialized_aggr_parameters = ndarrays_to_sparse_parameters(
+            parameters_aggregated
+        )
 
         # Aggregate custom metrics if aggregation fn was provided
-        # TODO add metrics aggregation by cluster
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
@@ -289,7 +326,6 @@ class FedCustom(fl.server.strategy.Strategy):
             log(WARNING, "No fit_metrics_aggregation_fn provided")
 
         return serialized_aggr_parameters, metrics_aggregated
-        
 
     def configure_evaluate(
         self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -297,7 +333,9 @@ class FedCustom(fl.server.strategy.Strategy):
         """Configure the next round of evaluation. Provide new model parameters and send instructions via config."""
         if self.fraction_evaluate == 0.0:
             return []
-        config_ins = {"server_round": server_round,}
+        config_ins = {
+            "server_round": server_round,
+        }
         evaluate_ins = EvaluateIns(parameters, config_ins)
 
         # Sample clients
@@ -311,7 +349,6 @@ class FedCustom(fl.server.strategy.Strategy):
         clients = client_manager.sample(
             num_clients=sample_size, min_num_clients=min_num_clients
         )
-        # TODO how to eval during clustering rounds?
 
         # Return client/config pairs
         return [(client, evaluate_ins) for client in clients]
@@ -362,7 +399,6 @@ class FedCustom(fl.server.strategy.Strategy):
             results.to_csv("results.csv", index=False)
 
         return loss_aggregated, metrics_aggregated
-
 
     def evaluate(
         self, server_round: int, parameters: Parameters

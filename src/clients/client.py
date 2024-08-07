@@ -50,9 +50,7 @@ class FlowerClient(fl.client.Client):
         # clustering
         self.cluster = None
         self.n_clusters = self.config.n_clusters
-        self.seq_len = (
-            self.config.input_size + self.config.forecast_horizon
-        )
+        self.seq_len = self.config.input_size + self.config.forecast_horizon
 
     def get_parameters(self, ins: GetParametersIns) -> GetParametersRes:
         """Return the current parameters of the client's federated model."""
@@ -82,15 +80,19 @@ class FlowerClient(fl.client.Client):
             if server_round < self.config.nbr_clustering_rounds:
                 cluster_centroids = ndarrays_original
                 Ploader = self._get_client_p_matrix()
-                j, v = self._client_subroutine(Ploader, cluster_centroids)        # j.shape: torch.Size([3, 168, 1]), v.shape: torch.Size([3])
-                stacked_j_v = torch.cat((j, v.unsqueeze(1).unsqueeze(2)), dim=1)  # Shape: [3, 168 + 1, 1]
+                j, v = self._client_subroutine(
+                    Ploader, cluster_centroids
+                )  # j.shape: torch.Size([3, 168, 1]), v.shape: torch.Size([3])
+                stacked_j_v = torch.cat(
+                    (j, v.unsqueeze(1).unsqueeze(2)), dim=1
+                )  # Shape: [3, 168 + 1, 1]
                 return FitRes(
                     status=Status(code=Code.OK, message="Success"),
                     parameters=ndarrays_to_sparse_parameters(stacked_j_v),
                     num_examples=self.model.len_trainloader,
                     metrics={},
                 )
-            
+
             # Centroids found: assign cluster
             # No training is done in this round because all clients need first to receive the weights of the cluster they chose
             if server_round == self.config.nbr_clustering_rounds:
@@ -99,9 +101,14 @@ class FlowerClient(fl.client.Client):
                 self.cluster = cluster_id.item()
                 return FitRes(
                     status=Status(code=Code.OK, message="Success"),
-                    parameters=ndarrays_to_sparse_parameters(torch.tensor((0, 0))), # Send empty Parameters object
+                    parameters=ndarrays_to_sparse_parameters(
+                        torch.tensor((0, 0))
+                    ),  # Send empty Parameters object
                     num_examples=self.model.len_trainloader,
-                    metrics={"cid": self.cid, "cluster_id": self.cluster}, # These are not metric but this is the only way to pass them to the server
+                    metrics={
+                        "cid": self.cid,
+                        "cluster_id": self.cluster,
+                    },  # These are not metric but this is the only way to pass them to the server
                 )
 
         # Training round: set local model, train and get updated parameters
@@ -112,7 +119,9 @@ class FlowerClient(fl.client.Client):
         # Build and return response
         return FitRes(
             status=Status(code=Code.OK, message="Success"),
-            parameters=ndarrays_to_sparse_parameters(ndarrays_updated), # Serialize ndarray's into a Parameters object using our custom function
+            parameters=ndarrays_to_sparse_parameters(
+                ndarrays_updated
+            ),  # Serialize ndarray's into a Parameters object using our custom function
             num_examples=self.model.len_trainloader,
             metrics={"cid": self.cid},
         )
@@ -128,10 +137,13 @@ class FlowerClient(fl.client.Client):
 
         # Evaluate local model:
         # train the local model by mixing it with the newly aggregated parameters. Metrics returned are for the test data.
-        if self.config.cluster_clients and ins.config["server_round"] < self.config.nbr_clustering_rounds:
+        if (
+            self.config.cluster_clients
+            and ins.config["server_round"] < self.config.nbr_clustering_rounds
+        ):
             loss, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = 0, 0, 0, 0, 0, 0
         else:
-             _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
+            _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
         loss = smape_loss  # TODO FIXME
         metrics = {
             "cid": self.cid,  # not a metric, but useful for evaluation
@@ -231,7 +243,9 @@ class FlowerClient(fl.client.Client):
     def _assign_cluster(self, cluster_centroids: List[torch.tensor]) -> int:
         Ploader = self._get_client_p_matrix()
         if self.config.filter_outliers:
-            filtered_Ploader = self._filter_outliers(Ploader, cluster_centroids, self.config.outliers_threshold)
+            filtered_Ploader = self._filter_outliers(
+                Ploader, cluster_centroids, self.config.outliers_threshold
+            )
         avg_load = self._compute_avg_load(filtered_Ploader)
 
         distances = []

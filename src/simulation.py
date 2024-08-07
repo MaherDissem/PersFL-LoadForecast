@@ -10,7 +10,9 @@ from utils import fit_config, set_seed
 from flwr.common.logger import log
 
 
-os.environ["PYTHONPATH"] = os.pathsep.join(sys.path) # Ensure environment variable is set for subprocesses
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    sys.path
+)  # Ensure environment variable is set for subprocesses
 set_seed(config.seed)
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
 log(msg=config(), level=20)

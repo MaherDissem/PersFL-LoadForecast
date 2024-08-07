@@ -1,56 +1,60 @@
 from dataclasses import dataclass
 import torch
 
+
 @dataclass
-class config: # TODO upper case
+class config:  # TODO upper case
     """Configuration class for the federated learning setup."""
 
     # Clients parameters
     data_root: str = "data/processed"
     nbr_clients: int = 20
-    nbr_rounds: int = 30
     personalization: bool = True
+    cluster_clients: bool = True
+    seed: int = 0
 
     # Dataloader parameters
     batch_size: int = 32
     valid_set_size: int = 0.15
     test_set_size: int = 0.15
-
-    # Server parameters
-    fraction_fit: float = 20 / 20       # TODO make lower
-    fraction_evaluate: float = 20 / 20  # TODO make lower
-    min_available_clients: int = 3
-    min_fit_clients: int = 2
-    min_evaluate_clients: int = 2
-
-    # Experiment parameters
-    log_file: str = "log.txt"
-
-    # Resources
-    device: torch.device = (
-        torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    )
-    num_cpus: int = 1
-    num_gpus: float = 1.0 if device.type == "cuda" else 0.0
-
-    # Model mixing parameters
-    mu: float = 0.01
-    nu: float = 2.0
-    eval_local: bool = False # after training the mixed model, whether to eval the mix or the local model
-
-    # Forecasting parameters
-    model: str = "SCINet"  # "Seq2Seq" or "SCINet"
     input_size: int = 24 * 6
     forecast_horizon: int = 24
     nbr_var: int = 1
     stride: int = 24
-    # Forecasting training parameters
+
+    # Server parameters
+    nbr_rounds: int = (
+        40  # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
+    )
+    fraction_fit: float = 20 / 20
+    fraction_evaluate: float = 20 / 20
+    min_available_clients: int = 3
+    min_fit_clients: int = 2
+    min_evaluate_clients: int = 2
+
+    # Client clustering parameters
+    n_clusters: int = 3
+    nbr_clustering_rounds: int = 10
+    nbr_inter_cluster_rounds: int = 30
+    clustering_seq_len = 24 * 7
+    clustering_alpha: float = 1e-0
+    filter_outliers: bool = True
+    outliers_threshold: float = 0.95
+
+    # Model mixing parameters
+    mu: float = 0.01
+    nu: float = 2.0
+    eval_local: bool = (
+        False  # after training the mixed model, whether to eval the mix or the local model
+    )
+
+    # Forecasting parameters
+    model: str = "SCINet"  # "Seq2Seq" or "SCINet"
     epochs: int = 200
     patience: int = 20
     lr: float = 1e-3
-    eval_every: int = 10
     checkpoint_path: str = "weights/model.pth"
-    seed: int = 0
+    eval_every: int = 10
     verbose: bool = True
     # Seq2seq2 model parameters (relevant only if model_choice="seq2seq")
     s2s_hidden_size: int = 128
@@ -73,6 +77,16 @@ class config: # TODO upper case
     decompose: bool = False
     single_step: int = 0
     single_step_output_One: int = 0
+
+    # Experiment results
+    log_file: str = "log.txt"
+
+    # Resources
+    device: torch.device = (
+        torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    )
+    num_cpus: int = 4
+    num_gpus: float = 4.0 if device.type == "cuda" else 0.0
 
     def upadate_from_args(self, args):
         """Update the default parameters with the given arguments (e.g received as CLI args)."""

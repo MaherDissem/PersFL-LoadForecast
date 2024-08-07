@@ -9,6 +9,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Resources
+resources/
+*.png
+
 # Data files
 data/
 cifar-*/

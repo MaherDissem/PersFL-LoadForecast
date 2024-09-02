@@ -10,7 +10,7 @@ class config:  # TODO upper case
     data_root: str = "data/processed"
     nbr_clients: int = 20
     personalization: bool = True
-    cluster_clients: bool = True
+    cluster_clients: bool = False
     seed: int = 0
 
     # Dataloader parameters
@@ -24,7 +24,7 @@ class config:  # TODO upper case
 
     # Server parameters
     nbr_rounds: int = (
-        40  # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
+        30  # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
     )
     fraction_fit: float = 20 / 20
     fraction_evaluate: float = 20 / 20
@@ -85,12 +85,7 @@ class config:  # TODO upper case
     device: torch.device = (
         torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     )
-    num_cpus: int = 4
-    num_gpus: float = 4.0 if device.type == "cuda" else 0.0
-
-    def upadate_from_args(self, args):
-        """Update the default parameters with the given arguments (e.g received as CLI args)."""
-        for key, value in args.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
-        return self
+    num_cpus: int = 4  # 32 total cores, 4 cores per client, 8 parallel processes
+    num_gpus: float = (
+        0.5 if device.type == "cuda" else 0.0
+    )  # 4 GPUs, 0.5 GPU per client, 8 parallel processes

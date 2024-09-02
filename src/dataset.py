@@ -20,7 +20,8 @@ class DatasetForecasting(torch.utils.data.Dataset):
         self.forcast_horizon = forcast_horizon
         self.stride = stride
         self.df = pd.read_csv(csv_file, index_col=0, parse_dates=True)
-        self.df, self.min_val, self.max_val = normalize(self.df)
+        # self.df, self.min_val, self.max_val = normalize(self.df)
+        self.min_val, self.max_val = 0, 1 # TODO: normalize during runtime
 
         self.X, self.y = self.run_sliding_window(self.df)
 
@@ -103,7 +104,7 @@ def get_client_data(
     return trainloader, validloader, testloader, dataset.min_val, dataset.max_val
 
 
-@lru_cache(maxsize=1) # cache the result of this function as it is called multiple times
+# @lru_cache(maxsize=1) # cache the result of this function as it is called multiple times
 def get_experiment_data(
     data_root: str,
     num_clients: int,
@@ -122,7 +123,7 @@ def get_experiment_data(
     max_vals = []
 
     csv_paths = glob.glob(data_root + "/*.csv")
-    csv_paths = natsorted(csv_paths)
+    # csv_paths = natsorted(csv_paths)
     assert num_clients <= len(csv_paths), "Querying more clients than available"
 
     for i, csv_file in enumerate(csv_paths):

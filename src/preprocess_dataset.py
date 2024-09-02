@@ -7,7 +7,7 @@ from config import config
 
 
 def resample_load(
-    df: pd.DataFrame, freq: str = "1H", method: str = "mean"
+    df: pd.DataFrame, freq: str = "1h", method: str = "mean"
 ) -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     if method == "mean":
@@ -21,7 +21,7 @@ def add_missing_timestamps_as_nan(df: pd.DataFrame) -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     first_day = df.index[0].floor("D")
     last_day = df.index[-1].ceil("D")
-    df = df.reindex(pd.date_range(first_day, last_day, freq="1H"))[:-1]
+    df = df.reindex(pd.date_range(first_day, last_day, freq="1h"))[:-1]
     return df
 
 
@@ -55,12 +55,16 @@ def preprocess_load(
 
     # Resample the data (taking The mean of the values within each hourly interval)
     df = resample_load(df, freq)
+    
+    # Normalize the data
+    df, _, _ = normalize(df) # TODO save min and max to denormalize later
 
     # Add missing timestamps as NaN (raw data has interruptions periods)
     df = add_missing_timestamps_as_nan(df)
 
     # Check for missing values
     if df.isna().any().any():
+        print(f"Missing values in {df_path}")
         pass
 
     return df

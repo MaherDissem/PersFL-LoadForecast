@@ -7,7 +7,7 @@ from config import config
 
 
 def resample_load(
-    df: pd.DataFrame, freq: str = "1h", method: str = "mean"
+    df: pd.DataFrame, freq: str = "h", method: str = "mean"
 ) -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     if method == "mean":
@@ -46,7 +46,13 @@ def preprocess_load(
 ) -> pd.DataFrame:
 
     # Load the dataset
-    df = pd.read_csv(df_path, index_col=0)
+    file_extension = os.path.splitext(df_path)[1]
+    if file_extension == ".csv":
+        df = pd.read_csv(df_path, index_col=0)
+    elif file_extension == ".xls":
+        df = pd.read_excel(df_path, index_col=0)
+    else:
+        raise NotImplementedError
 
     # Select the target feature
     if type(trg_feat) == str:
@@ -72,11 +78,18 @@ def preprocess_load(
 
 if __name__ == "__main__":
     input_data_path = "data/raw/CLEAN_REFIT_081116"
-    output_data_path = config.data_root
+    trg_feat = "Aggregate"
 
+    # input_data_path = "data/raw/1 hour Irise data xls files"
+    # trg_feat = "Site consumption ()"
+
+    output_data_path = config.data_root
     os.makedirs(output_data_path, exist_ok=True)
-    for csv_file in tqdm.tqdm(glob.glob(os.path.join(input_data_path, "*.csv"))):
-        df = preprocess_load(csv_file)
+    csv_files = glob.glob(os.path.join(input_data_path, "*.csv"))
+    xls_files = glob.glob(os.path.join(input_data_path, "*.xls"))
+
+    for csv_file in tqdm.tqdm(csv_files + xls_files):
+        df = preprocess_load(csv_file, trg_feat=trg_feat, freq="1H")
         df.to_csv(
             os.path.join(output_data_path, os.path.basename(csv_file)),
             index_label="timestamp",

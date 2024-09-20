@@ -1,4 +1,5 @@
 from typing import List, Tuple
+import os
 import glob
 from natsort import natsorted
 import pandas as pd
@@ -122,11 +123,11 @@ def get_experiment_data(
     min_vals = []
     max_vals = []
 
-    csv_paths = glob.glob(data_root + "/*.csv")
-    # csv_paths = natsorted(csv_paths)
-    assert num_clients <= len(csv_paths), "Querying more clients than available"
+    files_paths = [file for ext in ('csv', 'xls') for file in glob.glob(os.path.join(data_root, f"*.{ext}"))]
+    # files_paths = natsorted(files_paths)
+    assert num_clients <= len(files_paths), "Querying more clients than available"
 
-    for i, csv_file in enumerate(csv_paths):
+    for i, csv_file in enumerate(files_paths):
         trainloader, validloader, testloader, min_val, max_val = get_client_data(
             csv_file,
             input_size,
@@ -149,17 +150,13 @@ def get_experiment_data(
             raise ValueError(
                 f"Client {i} ({csv_file}) has empty dataloaders: len_train={len(trainloader)}, len_valid={len(validloader)}, len_test={len(testloader)}"
             )
-            # dataset 11 and 13 have too few samples
-            # when its <batch_size, droping last batch (seq2seq requires this) will yield 0 sized batches and errors
-            # TODO look into this
-
-    return trainloaders, valloaders, testloaders, csv_paths, min_vals, max_vals
+    return trainloaders, valloaders, testloaders, files_paths[:num_clients], min_vals, max_vals
 
 
 if __name__ == "__main__":
     get_experiment_data(  # for debugging
-        data_root="data/processed",
-        num_clients=20,
+        data_root="data/processed/Combined",
+        num_clients=43,
         input_size=24 * 6,
         forecast_horizon=24,
         stride=24,

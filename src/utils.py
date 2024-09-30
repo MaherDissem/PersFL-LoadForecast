@@ -32,7 +32,11 @@ def set_seed(seed: int):
     torch.cuda.manual_seed_all(seed)
 
 
-def plot_cluster_centroids(cluster_centroids: List[torch.tensor], n_clusters: int):
+def plot_cluster_centroids(
+    cluster_centroids: List[torch.tensor],
+    n_clusters: int,
+    path: str = "cluster_centroids.png",
+):
     plt.figure(figsize=(15, 5))
     for k in range(n_clusters):
         plt.plot(cluster_centroids[k].detach().numpy(), label=f"Cluster {k}")
@@ -41,4 +45,13 @@ def plot_cluster_centroids(cluster_centroids: List[torch.tensor], n_clusters: in
     plt.ylabel("Normalized Load")
     plt.title("Centroids of Clusters")
     # plt.show()
-    plt.savefig("cluster_centroids.png")
+    plt.savefig(path)
+
+
+def clean_folder(folder_path: str):
+    """Remove all files from a folder."""
+    print(f"Cleaning folder {folder_path}")
+    os.makedirs(folder_path, exist_ok=True)
+    for folder_content in os.listdir(folder_path):
+        if os.path.isfile(os.path.join(folder_path, folder_content)):
+            os.remove(os.path.join(folder_path, folder_content))

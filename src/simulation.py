@@ -8,20 +8,21 @@ from clients.client import client_fn
 from metrics import evaluate
 from utils import fit_config, set_seed
 from flwr.common.logger import log
+from utils import clean_folder
 
 
 os.environ["PYTHONPATH"] = os.pathsep.join(
     sys.path
 )  # Ensure environment variable is set for subprocesses
 set_seed(config.seed)
+
+# Prepare the experiments folder
+for folder in [config.weights_folder_path, config.results_folder_path]:
+    clean_folder(folder)
+
+# Configure the logger
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
 log(msg=config(), level=20)
-
-# Clean residuals from previous simulations
-weights_folder = config.weights_folder_path
-os.makedirs(weights_folder, exist_ok=True)
-for file in os.listdir(weights_folder):
-    os.remove(os.path.join(weights_folder, file))
 
 # Start the simulation
 fed_sparse_strategy = FedCustom(

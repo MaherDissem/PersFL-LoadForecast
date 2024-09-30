@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 import torch
 
@@ -53,7 +54,6 @@ class config:  # TODO upper case
     epochs: int = 200
     patience: int = 20
     lr: float = 1e-3
-    weights_folder_path: str = "weights/"
     eval_every: int = 10
     verbose: bool = True
     # Seq2seq2 model parameters (relevant only if model_choice="seq2seq")
@@ -79,7 +79,12 @@ class config:  # TODO upper case
     single_step_output_One: int = 0
 
     # Experiment results
-    log_file: str = "log.txt"
+    sim_name: str = (
+        f"simulations/{data_root.split('/')[-1]}_{nbr_clients}_{nbr_rounds}_{model}_{epochs}_{patience}_{'pers' if personalization else 'nopers'}_{'clust' if cluster_clients else 'noclust'}_{n_clusters}"
+    )
+    log_file: str = os.path.join(sim_name, "log.txt")
+    weights_folder_path: str = os.path.join(sim_name, "weights/")
+    results_folder_path: str = os.path.join(sim_name, "")
 
     # Resources
     device: torch.device = (

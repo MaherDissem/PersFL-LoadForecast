@@ -17,7 +17,13 @@ set_seed(config.seed)
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)
 log(msg=config(), level=20)
 
+# Clean residuals from previous simulations
+weights_folder = config.weights_folder_path
+os.makedirs(weights_folder, exist_ok=True)
+for file in os.listdir(weights_folder):
+    os.remove(os.path.join(weights_folder, file))
 
+# Start the simulation
 fed_sparse_strategy = FedCustom(
     fraction_fit=config.fraction_fit,
     fraction_evaluate=config.fraction_evaluate,

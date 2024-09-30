@@ -280,8 +280,8 @@ def client_fn(cid: str) -> FlowerClient:
     min_val = min_vals[int(cid)]
     max_val = max_vals[int(cid)]
     # Load model
-    os.makedirs("weights", exist_ok=True)
-    config.checkpoint_path = f"weights/model_{cid}.pth"
+    os.makedirs(config.weights_folder_path, exist_ok=True)
+    config.checkpoint_path = os.path.join(config.weights_folder_path, f"model_{cid}.pth")
     config.seed = config.seed + int(cid)
     if config.personalization:
         model = PersForecastingModel(

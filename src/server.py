@@ -1,6 +1,6 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 from logging import INFO, WARNING
-
+import os
 import pandas as pd
 import torch
 import flwr as fl
@@ -253,7 +253,11 @@ class FedCustom(fl.server.strategy.Strategy):
                     cid, cluster = fit_res.metrics["cid"], fit_res.metrics["cluster_id"]
                     self.cluster_assignments[cid] = cluster
                 # Plot cluster centroids
-                plot_cluster_centroids(self.cluster_centroids, config.n_clusters)
+                plot_cluster_centroids(
+                    self.cluster_centroids,
+                    config.n_clusters,
+                    path=os.path.join(config.sim_name, "cluster_centroids.png"),
+                )
                 # Initialize cluster weights
                 self.cluster_weights = {}
                 for cluster_id in range(config.n_clusters):
@@ -380,23 +384,44 @@ class FedCustom(fl.server.strategy.Strategy):
             metrics.pop("cid")
             metrics_aggregated[cid] = metrics
 
-        # Save metrics to a csv file for the last round
-        if server_round == config.nbr_rounds:
-            results = pd.DataFrame(columns=["cid", "smape", "mae", "mse", "rmse", "r2"])
-            for cid, metrics in metrics_aggregated.items():
-                new_row = pd.DataFrame(
-                    {
-                        "cid": [int(cid)],
-                        "smape": [metrics["smape"]],
-                        "mae": [metrics["mae"]],
-                        "mse": [metrics["mse"]],
-                        "rmse": [metrics["rmse"]],
-                        "r2": [metrics["r2"]],
-                    }
-                )
-                results = pd.concat([results, new_row], ignore_index=True)
-            results = results.sort_values(by="cid")
-            results.to_csv("results.csv", index=False)
+        # Save metrics to a csv file
+        results = pd.DataFrame(
+            columns=["round", "eval_data", "cid", "smape", "mae", "mse", "rmse", "r2"]
+        )
+        for cid, metrics in metrics_aggregated.items():
+            test_row = pd.DataFrame(
+                {
+                    "round": [server_round],
+                    "eval_data": ["test"],
+                    "cid": [int(cid)],
+                    "smape": [metrics["test_smape"]],
+                    "mae": [metrics["test_mae"]],
+                    "mse": [metrics["test_mse"]],
+                    "rmse": [metrics["test_rmse"]],
+                    "r2": [metrics["test_r2"]],
+                }
+            )
+            val_row = pd.DataFrame(
+                {
+                    "round": [server_round],
+                    "eval_data": ["val"],
+                    "cid": [int(cid)],
+                    "smape": [metrics["val_smape"]],
+                    "mae": [metrics["val_mae"]],
+                    "mse": [metrics["val_mse"]],
+                    "rmse": [metrics["val_rmse"]],
+                    "r2": [metrics["val_r2"]],
+                }
+            )
+            results = pd.concat([results, test_row, val_row], ignore_index=True)
+        results.sort_values(by=["round", "eval_data", "cid"], inplace=True)
+        os.makedirs(config.results_folder_path, exist_ok=True)
+        results.to_csv(
+            f"{config.results_folder_path}/results.csv",
+            index=False,
+            mode="a",
+            header=server_round == 1,
+        )
 
         return loss_aggregated, metrics_aggregated
 

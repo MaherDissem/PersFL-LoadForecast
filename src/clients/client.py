@@ -139,19 +139,26 @@ class FlowerClient(fl.client.Client):
         # train the local model by mixing it with the newly aggregated parameters. Metrics returned are for the test data.
         if (
             self.config.cluster_clients
-            and ins.config["server_round"] < self.config.nbr_clustering_rounds
+            and ins.config["server_round"] <= self.config.nbr_clustering_rounds
         ):
-            loss, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = 0, 0, 0, 0, 0, 0
+            test_smape, test_mae, test_mse, test_rmse, test_r2 = 0, 0, 0, 0, 0
+            val_smape, val_mae, val_mse, val_rmse, val_r2 = 0, 0, 0, 0, 0
         else:
-            _, smape_loss, mae_loss, mse_loss, rmse_loss, r2_loss = self.model.train()
-        loss = smape_loss  # TODO FIXME
+            _, test_smape, test_mae, test_mse, test_rmse, test_r2 = self.model.train()
+            val_smape, val_mae, val_mse, val_rmse, val_r2 = self.model.evaluate()
+        loss = test_smape
         metrics = {
             "cid": self.cid,  # not a metric, but useful for evaluation
-            "smape": loss,
-            "mae": mae_loss,
-            "mse": mse_loss,
-            "rmse": rmse_loss,
-            "r2": r2_loss,
+            "test_smape": test_smape,
+            "test_mae": test_mae,
+            "test_mse": test_mse,
+            "test_rmse": test_rmse,
+            "test_r2": test_r2,
+            "val_smape": val_smape,
+            "val_mae": val_mae,
+            "val_mse": val_mse,
+            "val_rmse": val_rmse,
+            "val_r2": val_r2,
         }
 
         # Build and return response
@@ -281,7 +288,9 @@ def client_fn(cid: str) -> FlowerClient:
     max_val = max_vals[int(cid)]
     # Load model
     os.makedirs(config.weights_folder_path, exist_ok=True)
-    config.checkpoint_path = os.path.join(config.weights_folder_path, f"model_{cid}.pth")
+    config.checkpoint_path = os.path.join(
+        config.weights_folder_path, f"model_{cid}.pth"
+    )
     config.seed = config.seed + int(cid)
     if config.personalization:
         model = PersForecastingModel(

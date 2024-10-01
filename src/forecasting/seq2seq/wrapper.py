@@ -50,7 +50,7 @@ class ModelWrapper:
         )
         loss_evol = []
 
-        for epoch in range(1, self.args.epochs+1):
+        for epoch in range(1, self.args.epochs + 1):
             early_stopping.epoch = epoch
             epoch_loss = 0.0
 
@@ -71,12 +71,10 @@ class ModelWrapper:
                 validloader
             )
 
-            if self.args.verbose:
-                if epoch % self.args.eval_every == 0:
-                    print(f"epoch: {epoch}, Train loss: {epoch_loss:.7f}")
-                    print(
-                        f"Eval: smape={smape_loss:.7f}, mae={mae_loss:.7f}, mse={mse_loss:.7f}, rmse={rmse_loss:.7f}, r2={r2_loss:.7f}"
-                    )
+            if self.args.verbose and epoch % self.args.eval_every == 0:
+                print(
+                    f"Epoch: {epoch}: Train: loss={epoch_loss:.7f}, Eval: smape={smape_loss:.7f}, mae={mae_loss:.7f}, mse={mse_loss:.7f}, rmse={rmse_loss:.7f}, r2={r2_loss:.7f}"
+                )
 
             # early_stopping needs the validation loss to check if it has decresed,
             # and if it has, it will make a checkpoint of the current model

@@ -261,9 +261,9 @@ class PersForecastingModel(nn.Module):
                 validloader
             )
 
-            if self.args.verbose:
+            if self.args.verbose and epoch % self.args.eval_every == 0:
                 print(
-                    f"Epoch {epoch}: train loss={epoch_loss:.2f}, valid loss={smape_loss:.2f}"
+                    f"Epoch: {epoch}: Train: loss={epoch_loss:.7f}, Eval: smape={smape_loss:.7f}, mae={mae_loss:.7f}, mse={mse_loss:.7f}, rmse={rmse_loss:.7f}, r2={r2_loss:.7f}"
                 )
 
             # early_stopping needs the validation loss to check if it has decresed,

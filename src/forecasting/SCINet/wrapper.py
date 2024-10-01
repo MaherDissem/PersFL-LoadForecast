@@ -43,7 +43,8 @@ def adjust_learning_rate(optimizer, epoch, args):
         lr = lr_adjust[epoch]
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
-        print("Updating learning rate to {}".format(lr))
+        if args.verbose:
+            print("Updating learning rate to {}".format(lr))
     else:
         for param_group in optimizer.param_groups:
             lr = param_group["lr"]
@@ -169,12 +170,10 @@ class ModelWrapper:
                 validloader
             )
 
-            if self.args.verbose:
-                if epoch % self.args.eval_every == 0:
-                    print(f"epoch: {epoch}, Train loss: {epoch_loss:.7f}")
-                    print(
-                        f"Eval: smape={smape_loss:.7f}, mae={mae_loss:.7f}, mse={mse_loss:.7f}, rmse={rmse_loss:.7f}, r2={r2_loss:.7f}"
-                    )
+            if self.args.verbose and epoch % self.args.eval_every == 0:
+                print(
+                    f"Epoch: {epoch}: Train: loss={epoch_loss:.7f}, Eval: smape={smape_loss:.7f}, mae={mae_loss:.7f}, mse={mse_loss:.7f}, rmse={rmse_loss:.7f}, r2={r2_loss:.7f}"
+                )
 
             # early_stopping needs the validation loss to check if it has decresed,
             # and if it has, it will make a checkpoint of the current model

@@ -8,7 +8,7 @@ from clients.client import client_fn
 from metrics import evaluate
 from utils import fit_config, set_seed
 from flwr.common.logger import log
-from utils import clean_folder
+from utils import prepare_folder
 
 
 os.environ["PYTHONPATH"] = os.pathsep.join(
@@ -17,8 +17,12 @@ os.environ["PYTHONPATH"] = os.pathsep.join(
 set_seed(config.seed)
 
 # Prepare the experiments folder
-for folder in [config.weights_folder_path, config.results_folder_path]:
-    clean_folder(folder)
+for folder in [
+    config.weights_folder_path,
+    config.results_folder_path,
+    config.filtered_data_path,
+]:
+    prepare_folder(folder)
 
 # Configure the logger
 fl.common.logger.configure(identifier="FlowerExperiment", filename=config.log_file)

@@ -48,7 +48,7 @@ def plot_cluster_centroids(
     plt.savefig(path)
 
 
-def clean_folder(folder_path: str):
+def prepare_folder(folder_path: str):
     """Remove all files from a folder."""
     print(f"Cleaning folder {folder_path}")
     os.makedirs(folder_path, exist_ok=True)

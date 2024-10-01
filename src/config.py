@@ -30,8 +30,8 @@ class config:  # TODO upper case
     fraction_fit: float = 20 / 20
     fraction_evaluate: float = 20 / 20
     min_available_clients: int = 3
-    min_fit_clients: int = 2
-    min_evaluate_clients: int = 2
+    min_fit_clients: int = 1
+    min_evaluate_clients: int = 1
 
     # Client clustering parameters
     n_clusters: int = 4
@@ -40,14 +40,12 @@ class config:  # TODO upper case
     clustering_seq_len = 24 * 7
     clustering_alpha: float = 1e-0
     filter_outliers: bool = True
-    outliers_threshold: float = 0.95
+    outliers_threshold: float = 0.90
 
     # Model mixing parameters
     mu: float = 0.01
     nu: float = 2.0
-    eval_local: bool = (
-        False  # after training the mixed model, whether to eval the mix or the local model
-    )
+    eval_local: bool = False  # wether to eval the mixed or the local model
 
     # Forecasting parameters
     model: str = "SCINet"  # "Seq2Seq" or "SCINet"
@@ -85,6 +83,7 @@ class config:  # TODO upper case
     log_file: str = os.path.join(sim_name, "log.txt")
     weights_folder_path: str = os.path.join(sim_name, "weights/")
     results_folder_path: str = os.path.join(sim_name, "")
+    filtered_data_path: str = os.path.join(sim_name, "filtered_data/")
 
     # Resources
     device: torch.device = (

@@ -39,7 +39,7 @@ class config:  # TODO upper case
     nbr_inter_cluster_rounds: int = 30
     clustering_seq_len = 24 * 7
     clustering_alpha: float = 1e-0
-    filter_outliers: bool = True
+    filter_outliers: bool = False
     outliers_threshold: float = 0.90
 
     # Model mixing parameters

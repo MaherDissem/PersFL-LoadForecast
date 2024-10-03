@@ -86,21 +86,21 @@ def get_client_data(
         batch_size=batch_size,
         shuffle=False,
         pin_memory=True,
-        drop_last=True,
+        drop_last=False,
     )
     validloader = DataLoader(
         valid_data,
         batch_size=batch_size,
         shuffle=False,
         pin_memory=True,
-        drop_last=True,
+        drop_last=False,
     )
     testloader = DataLoader(
         test_data,
         batch_size=batch_size,
         shuffle=False,
         pin_memory=True,
-        drop_last=True,
+        drop_last=False,
     )
     return trainloader, validloader, testloader, dataset.min_val, dataset.max_val
 

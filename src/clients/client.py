@@ -1,4 +1,5 @@
 from typing import List, Tuple
+from logging import ERROR
 import os
 import numpy as np
 import flwr as fl
@@ -12,6 +13,7 @@ from flwr.common import (
     GetParametersRes,
     Status,
 )
+from flwr.common.logger import log
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -99,6 +101,15 @@ class FlowerClient(fl.client.Client):
                 cluster_centroids = ndarrays_original
                 cluster_id = self._assign_cluster(cluster_centroids)
                 self.cluster = cluster_id.item()
+                if config.filter_outliers:
+                    Ploader = self._get_client_p_matrix()
+                    filtered_train_dataset = self._update_model_trainloader(
+                        Ploader, cluster_centroids, config.outliers_threshold
+                    )
+                    torch.save(  # Data is kept private and not shared with the server
+                        filtered_train_dataset,
+                        f"{config.filtered_data_path}/{self.cid}.pt",
+                    )
                 return FitRes(
                     status=Status(code=Code.OK, message="Success"),
                     parameters=ndarrays_to_sparse_parameters(
@@ -112,6 +123,8 @@ class FlowerClient(fl.client.Client):
                 )
 
         # Training round: set local model, train and get updated parameters
+        if config.cluster_clients and config.filter_outliers:
+            self._load_trainloader()
         self.model.set_parameters(ndarrays_original)
         self.model.train()
         ndarrays_updated = self.model.get_parameters()
@@ -144,6 +157,8 @@ class FlowerClient(fl.client.Client):
             test_smape, test_mae, test_mse, test_rmse, test_r2 = 0, 0, 0, 0, 0
             val_smape, val_mae, val_mse, val_rmse, val_r2 = 0, 0, 0, 0, 0
         else:
+            if config.cluster_clients and config.filter_outliers:
+                self._load_trainloader()
             _, test_smape, test_mae, test_mse, test_rmse, test_r2 = self.model.train()
             val_smape, val_mae, val_mse, val_rmse, val_r2 = self.model.evaluate()
         loss = test_smape
@@ -253,8 +268,9 @@ class FlowerClient(fl.client.Client):
             filtered_Ploader = self._filter_outliers(
                 Ploader, cluster_centroids, self.config.outliers_threshold
             )
-        avg_load = self._compute_avg_load(filtered_Ploader)
+            Ploader = filtered_Ploader
 
+        avg_load = self._compute_avg_load(Ploader)
         distances = []
         for k in range(self.n_clusters):
             centroid_k = cluster_centroids[k]
@@ -263,6 +279,50 @@ class FlowerClient(fl.client.Client):
         min_dist, min_idx = torch.min(torch.tensor(distances), dim=0)
         self.cluster = min_idx
         return min_idx
+
+    def _update_model_trainloader(
+        self,
+        Ploader: DataLoader,
+        cluster_centroids: List[torch.tensor],
+        distance_percentile: float,
+    ) -> DataLoader:
+        """Replace the trainloader with a new one that filters out outlying sequences.
+        Valid and test loaders are not affected.
+        """
+        filtered_Ploader = self._filter_outliers(
+            Ploader,
+            cluster_centroids,
+            # self.config.outliers_threshold,
+            distance_percentile,
+        )
+        x_data = []
+        y_data = []
+        for filter_batch in filtered_Ploader:
+            x = filter_batch[0].squeeze(0)[: -self.config.forecast_horizon, :]
+            y = filter_batch[0].squeeze(0)[-self.config.forecast_horizon :, :]
+            x_data.append(x)
+            y_data.append(y)
+        x_data = torch.stack(x_data)
+        y_data = torch.stack(y_data)
+
+        filtered_train_dataset = TensorDataset(x_data, y_data)
+        return filtered_train_dataset
+
+    def _load_trainloader(self) -> None:
+        try:
+            filtered_train_dataset = torch.load(
+                f"{config.filtered_data_path}/{self.cid}.pt"
+            )
+            self.trainloader = DataLoader(
+                filtered_train_dataset,
+                batch_size=self.config.batch_size,
+                shuffle=False,
+                pin_memory=True,
+                drop_last=False,
+            )
+            self.model.trainloader = self.trainloader
+        except Exception as e:
+            log(ERROR, f"Error loading filtered data: {e}")
 
 
 def client_fn(cid: str) -> FlowerClient:

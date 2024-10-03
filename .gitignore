@@ -27,6 +27,7 @@ logs/
 results/
 *.csv
 *.pth
+*.pt
 
 # Miscellaneous
 TODO.md

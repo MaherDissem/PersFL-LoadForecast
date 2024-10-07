@@ -251,6 +251,7 @@ class FedCustom(fl.server.strategy.Strategy):
                 self.cluster_assignments = {}
                 for _, fit_res in results:
                     cid, cluster = fit_res.metrics["cid"], fit_res.metrics["cluster_id"]
+                    log(INFO, f"Client {cid} assigned to cluster {cluster}.")
                     self.cluster_assignments[cid] = cluster
                 # Plot cluster centroids
                 plot_cluster_centroids(

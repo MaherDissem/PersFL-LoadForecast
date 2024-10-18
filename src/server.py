@@ -287,13 +287,13 @@ class FedCustom(fl.server.strategy.Strategy):
             # Aggregate client models by cluster
             self.cluster_weights = {}
             cluster_weights_n_samples = {}
-            for cluster_id, cluster_results in cluster_results.items():
-                aggr_weights = aggregate(cluster_results)
+            for cluster_id, cluster_result in cluster_results.items():
+                aggr_weights = aggregate(cluster_result)
                 serialized_weights = ndarrays_to_sparse_parameters(aggr_weights)
                 self.cluster_weights[cluster_id] = serialized_weights
 
                 cluster_total_samples = sum(
-                    [num_examples for _, num_examples in cluster_results]
+                    [num_examples for _, num_examples in cluster_result]
                 )
                 cluster_weights_n_samples[cluster_id] = (
                     aggr_weights,

@@ -7,12 +7,14 @@ import torch
 class config:  # TODO upper case
     """Configuration class for the federated learning setup."""
 
-    # Clients parameters
-    data_root: str = "data/processed/Combined"
-    nbr_clients: int = 43
-    personalization: bool = True
-    cluster_clients: bool = True
+    # Simulation parameters
+    data_root: str = "data/processed/IRISE"
+    nbr_clients: int = 23
+    personalization: bool = False
+    cluster_clients: bool = False
+    ala_init: bool = True
     seed: int = 0
+    verbose: bool = False
 
     # Dataloader parameters
     batch_size: int = 32
@@ -25,7 +27,7 @@ class config:  # TODO upper case
 
     # Server parameters
     nbr_rounds: int = (
-        40  # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
+        30  # nbr_clustering_rounds + nbr_inter_cluster_rounds + nbr_global_rounds
     )
     fraction_fit: float = 20 / 20
     fraction_evaluate: float = 20 / 20
@@ -34,7 +36,7 @@ class config:  # TODO upper case
     min_evaluate_clients: int = 1
 
     # Client clustering parameters
-    n_clusters: int = 4
+    n_clusters: int = 5
     nbr_clustering_rounds: int = 10
     nbr_inter_cluster_rounds: int = 30
     clustering_seq_len = 24 * 7
@@ -47,13 +49,17 @@ class config:  # TODO upper case
     nu: float = 2.0
     eval_local: bool = False  # wether to eval the mixed or the local model
 
+    # Model initialization
+    rand_percent: int = 100
+    eta: float = 1.0
+    layer_idx: int = 0
+
     # Forecasting parameters
     model: str = "SCINet"  # "Seq2Seq" or "SCINet"
     epochs: int = 200
     patience: int = 20
     lr: float = 1e-3
     eval_every: int = 10
-    verbose: bool = True
     # Seq2seq2 model parameters (relevant only if model_choice="seq2seq")
     s2s_hidden_size: int = 128
     s2s_num_grulstm_layers: int = 1
@@ -78,7 +84,7 @@ class config:  # TODO upper case
 
     # Experiment results
     sim_name: str = (
-        f"simulations/{data_root.split('/')[-1]}_{nbr_clients}_{nbr_rounds}_{model}_{epochs}_{patience}_{'pers' if personalization else 'nopers'}_{'clust' if cluster_clients else 'noclust'}_{n_clusters}"
+        f"simulations/{data_root.split('/')[-1]}_{nbr_clients}_{nbr_rounds}_{model}_{epochs}_{patience}_{'pers' if personalization else 'nopers'}_{'clust' if cluster_clients else 'noclust'}_{n_clusters}_{'ala' if ala_init else 'noala'}"
     )
     log_file: str = os.path.join(sim_name, "log.txt")
     weights_folder_path: str = os.path.join(sim_name, "weights/")

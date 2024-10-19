@@ -397,6 +397,12 @@ class SCINet(nn.Module):
                 x = x + means
 
             return x, MidOutPut
+    
+    def predict(self, x):
+        if self.stacks == 1:
+            return self(x)
+        elif self.stacks == 2:
+            return self(x)[0]
 
 
 def get_variable(x):

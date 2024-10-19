@@ -365,6 +365,7 @@ def client_fn(cid: str) -> FlowerClient:
             trainloader,
             validloader,
             testloader,
+            int(cid)
         )
     # Create a Flower client representing representing a single building (single data source)
     return FlowerClient(

@@ -84,7 +84,7 @@ class ForecastingModel:
             self.ala_initialization.adaptive_local_aggregation(
                 global_model_wrapper.model, self.local_model_wrapper.model
             )
-
+\
     def get_parameters(self) -> List[np.ndarray]:
         return [
             val.cpu().numpy()

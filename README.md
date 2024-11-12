@@ -74,7 +74,7 @@ project_root/
     ```bash
     python src/simulation.py
     ```
-    Results will be saved to `simulations/<simulation_id>/`.
+    Results will be saved to `simulations/<simulation_id>/` and can be analyzed with `src/notebooks/results_analysis.ipynb`.
 
 ## Citation
 

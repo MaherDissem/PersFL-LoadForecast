@@ -57,14 +57,24 @@ project_root/
     ```
     This repository was developed with the `1.8.0` version of [Flower](https://flower.ai/) and might not work out of the box for later versions.
 
-3. **Configure parameters:** 
+3. **Download and preprocess the data:**
+
+    Place the raw dataset files in the `data/raw` directory. Each file represents a different client.
+    These files will be preprocessed (normalized, resampled to hourly frequency and NaN values handled) using the following command:
+    ```bash
+    python src/preprocess_dataset.py
+    ```
+
+4. **Configure parameters:** 
 
     Modify `src/config.py` to set desired parameters. Refer to the comments in that file for a descriptions of each parameter.
 
-4. **Run the simulation:**
+
+5. **Run the simulation:**
     ```bash
     python src/simulation.py
     ```
+    Results will be saved to `simulations/<simulation_id>/`.
 
 ## Citation
 

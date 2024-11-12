@@ -9,4 +9,4 @@
 
 - `ALA.py` implements an adaptive model initialization mechanism to optimize the initialization of the client model in each FL round. See [this paper](https://arxiv.org/abs/2212.01197) for more details. This is toggled with the `ala_init` parameter in `config.py`.
 
-- The implementation of the `Fedora` PFL algorithm for load forecasting is availble [here](https://github.com/MaherDissem/FEDORA/tree/load-forecast).
+- The implementation of the `Fedora` PFL algorithm for load forecasting is available [here](https://github.com/MaherDissem/FEDORA/tree/load-forecast).

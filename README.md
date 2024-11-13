@@ -17,30 +17,36 @@ In these experiments, we use the IRISE and REFIT datasets. While IRISE is not pu
 ## File Overview
 ```
 project_root/ 
-├── src/  # Directory containing the main source code.  
-│   ├── simulation.py  # Main script to start the FL simulation.  
-│   ├── config.py  # Contains configuration parameters for the simulation's setup.  
-│   ├── server.py  # Defines the server-side strategy for FL, including aggregation of client updates.  
-│   ├── communication.py  # Manages communication protocols between clients and the server.  
-│   ├── clients/  # Contains client-related files for FL.  
-│   │   ├── client.py  # Entry point for creating client objects and defining interaction with the server.  
-│   │   ├── base_model.py  # Defines client logic for standard FL without personalization.  
-│   │   ├── ALA.py  # Implements Adaptive Local Aggregation for initializing the client model in each FL round.  
-│   │   └── mixed_model.py  # Implements a forecasting model that combines local and federated models for personalization.  
-│   ├── forecasting/  # Contains different forecasting model implementations.  
-│   │   ├── SCINet/  # Directory for SCINet model implementation (definition, training and evaluation logic).
-│   │   ├── seq2seq/  # Directory for Seq2Seq model implementation.  
-│   │   └── early_stop.py  # Implements early stopping logic to prevent overfitting.  
-│   ├── isolated_client.py  # Implements logic for a client operating in isolation without FL.
-│   ├── preprocess_dataset.py  # Preprocesses raw data
-│   ├── dataset.py  # Handles data loading for the clients.  
-│   ├── metrics.py  # Defines custom evaluation metrics for the FL process.  
-│   ├── utils.py  # Utility functions for logging, setting seeds, and preparing folders.  
-│   └── notebooks/  # Contains Jupyter notebooks to analyze results and visualize the clustering process.
-├── .gitignore  # Specifies files and directories to be ignored by Git.  
-├── LICENSE  # License file for the project.  
-├── requirements.txt  # Lists project dependencies for easy installation.  
-└── README.md  # Overview of the project, including methods implemented and how to run the simulation.  
+├── src/                             # Directory containing the source code.  
+│   ├── simulation.py                # Main script to start the FL simulation.  
+│   ├── config.py                    # Contains configuration parameters for the simulation's setup.  
+│   ├── server.py                    # Defines the server-side strategy for FL, including aggregation of client updates.  
+│   ├── communication.py             # Manages communication protocols between clients and the server.  
+│   ├── clients/                     # Contains client-related files for FL.  
+│   │   ├── client.py                # Entry point for creating client objects and defining interaction with the server.  
+│   │   ├── base_model.py            # Defines client logic for standard FL without personalization.  
+│   │   ├── ALA.py                   # Implements Adaptive Local Aggregation for initializing the client model in each FL round.  
+│   │   └── mixed_model.py           # Implements a forecasting model that combines local and federated models for personalization.  
+│   ├── forecasting/                 # Contains different forecasting model implementations.  
+│   │   ├── SCINet/                  # Directory for SCINet model implementation.
+│   │   │   ├── SCINet.py            # Defines the model.
+│   │   │   └── wrapper.py           # Handles the model training and evaluation logic.
+│   │   ├── seq2seq/                 # Directory for Seq2Seq model implementation.
+│   │   │   ├── model.py             # Defines the model.
+│   │   │   └── wrapper.py           # Handles the model training and evaluation logic.
+│   │   └── early_stop.py            # Implements early stopping logic to prevent overfitting.  
+│   ├── isolated_client.py           # Implements logic for a client operating in isolation without FL.
+│   ├── preprocess_dataset.py        # Preprocesses raw data.
+│   ├── dataset.py                   # Handles data loading for the clients.  
+│   ├── metrics.py                   # Defines custom evaluation metrics for the FL process.  
+│   ├── utils.py                     # Utility functions for logging, setting seeds, and preparing folders.  
+│   └── notebooks/                   # Contains Jupyter notebooks.
+│   │   ├── load_clustering.ipynb    # Visualizes the client clustering process.
+│   │   └── results_analysis.ipynb   # Aanalyzes and visualizes the results.
+├── .gitignore                       # Specifies files and directories to be ignored by Git.  
+├── LICENSE                          # License file for the project.  
+├── requirements.txt                 # Lists project dependencies for easy installation.  
+└── README.md                        # Overview of the project, including methods implemented and how to run the simulation.  
 ```
 
 ## Running the Simulation

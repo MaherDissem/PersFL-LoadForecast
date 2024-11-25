@@ -57,11 +57,11 @@ project_root/
    source env/bin/activate  # On Windows, use `env\Scripts\activate`
    ```
 
-2. **Set up a virtual environment**:
+2. **Install Dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
-    This repository was developed with the `1.8.0` version of [Flower](https://flower.ai/) and might not work out of the box for later versions.
+    Note: this repository was developed with the `1.8.0` version of [Flower](https://flower.ai/) and might not work out of the box for later versions.
 
 3. **Download and preprocess the data:**
 

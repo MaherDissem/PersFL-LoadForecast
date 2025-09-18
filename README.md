@@ -83,5 +83,17 @@ project_root/
     Results will be saved to `simulations/<simulation_id>/` and can be analyzed with `src/notebooks/results_analysis.ipynb`.
 
 ## Citation
-
-TBA
+If you find this repository useful, please consider citing it as follows:
+```
+@ARTICLE{11037499,
+  author={Dissem, Maher and Amayri, Manar},
+  journal={IEEE Internet of Things Journal}, 
+  title={Toward Efficient Federated Load Forecasting: Personalization Mechanisms and Their Impact}, 
+  year={2025},
+  volume={12},
+  number={17},
+  pages={36045-36062},
+  keywords={Data models;Load forecasting;Adaptation models;Forecasting;Federated learning;Load modeling;Predictive models;Computational modeling;Training;Smart buildings;Load forecasting;personalized federated learning (PFL);smart buildings},
+  doi={10.1109/JIOT.2025.3580378}
+}
+```
